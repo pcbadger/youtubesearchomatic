@@ -19,5 +19,5 @@ with open(TRACKLIST, "rb") as f:
         regex = ur""
         for vid in soup.findAll(regex, attrs={'class':'yt-uix-tile-link'})[:1]:
             strLine = str(line)
-            f2.write(strLine + ',https://www.youtube.com' + vid['href'] + '\n')
+            f2.write(strLine + '|https://www.youtube.com' + vid['href'] + '\n')
             print strLine + ' - https://www.youtube.com' + vid['href']
