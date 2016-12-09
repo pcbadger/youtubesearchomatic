@@ -1,57 +1,132 @@
 #!/bin/bash
 set -x
 
+function sortRawList () {
+
+    INPUT=$1
+    OUTPUT=0_sortedList
+    TICKER=0
+    TOTAL=`cat ${INPUT} | wc -l`
+    rm ${OUTPUT}.csv
+    touch ${OUTPUT}.csv
+        cat ${INPUT} | while read LINE
+            do
+                LINE=`echo ${LINE} | sed "s/([\',\|])//g" | sed 's/ – /|/g' | sed 's/ –/|/g' | sed 's/– /|/g'`
+                TITLE=`echo ${LINE} | rev | cut -d \| -f 2- | rev`
+                    if ! [[ ${LINE} =~ '|' ]]; then
+                        ARTIST='Unknown'
+                    else
+                        ARTIST=`echo ${LINE} | rev | cut -d \| -f 1 | rev`
+                    fi
+                echo "Sorting: ${TICKER} of ${TOTAL}"
+                echo ${ARTIST}"|"${TITLE} >> ${OUTPUT}.csv
+                ((TICKER++))
+            done
+        myListFormat ${OUTPUT}.csv
+        echo "Sorted!"
+    #exit 0
+}
+
+function tidyList () {
+    listToTidy=${1}.csv
+    tidiedList=${1}Long.csv
+    touch ${listToTidy}
+    echo $'\n' >> ${tidiedList}
+    echo "tidied - "${tidiedList}
+    cat ${listToTidy} >> ${tidiedList}
+    #cat 2_listWithUrlLong.csv | sed "s/\', \"/|/g" |  sed "s/\', \'/|/g" | sed "s/\[\'//g"  | sed "s/\[\"//g"  | sed "s/\'('\'//g"  | sed "s/\'')'//g"  | sed "s/\'\]//g"  | sed "s/\"\]//g" | sort | uniq > tmp;
+    cat ${tidiedList} | sort | uniq > bufftmp; mv bufftmp ${tidiedList}
+    #rm -rf ${listToTidy}
+}
+
+function myListFormat () {
+    INPUT=$1
+    TICKER=0
+    TOTAL=`cat ${INPUT} | wc -l`
+    cat ${INPUT} | while read LINE
+        do
+            echo "Formating the hell out of this list: ${TICKER} of ${TOTAL}"
+            URL=`echo ${LINE} | cut -d \| -f 3`
+            LINE=`echo ${LINE} | sed "s/Unknown|/|/g" | sed "s/[\[\'\’\‘.)]//g" | sed "s/(/ - /g" \
+            | sed 's/]//g' | sed 's/  / /g' | sed 's/&/And/g' | sed "s/[Ö]/O/g" | sed "s/[øöô]/o/g" \
+            | sed "s/[é]/e/g" | sed "s/[µ]/u/g" | sed "s/[ç]/c/g"`
+            ARTIST=`echo ${LINE} | cut -d \| -f 1 | sed 's/,/ /g' | sed 's/  / /g'`
+            TITLE=`echo ${LINE} | cut -d \| -f 2`
+            echo ${ARTIST}'|'${TITLE}'|'${URL} >> tmpo
+            cat tmpo | sort | uniq >> tmpo2; mv tmpo2 ${INPUT}
+        done
+    rm -rf tmpo
+}
+
 function getYoutubeUrlList () {
     TRACKLIST=$1
-    touch getUrlListOutput.csv
+    #echo '\n' >> bufferout.csv
+    #touch bufferout.csv
     # If previous run was aborted, this will add the output into the working file
-    cat getUrlListOutputBuffer.csv >> getUrlListOutputCombined.csv
+        tidylist 2_listWithUrl
     # The search function gets a bit twitchy with apostrophes
-    cat $TRACKLIST | sed "s/\'//g"  | sed "s/\,/ /g" >> tmp && mv tmp $TRACKLIST
-    python seeklocatedownload_geturllist.py $TRACKLIST
-    #cat getUrlListOutputBuffer.csv >> getUrlListOutputCombined.csv
+    rm -rf tmp
+    cat $TRACKLIST | sed "s/Unknown|/|/g" | sed "s/([\',\])//g" >> tmp && mv tmp 1_sortedTrackList.csv
+    python seeklocatedownload_geturllist.py 1_sortedTrackList.csv
+        tidyList 2_listWithUrl
+       myListFormat 2_listWithUrlLong.csv
+    exit 1
 }
 
 function downloadAllTheThings () {
-    cat getUrlListOutputCombined.csv | sed 's/\[//g' | sed "s/\'//g" | sed "s/\]//g" | sed 's/\"//g' | sed "s/\,//g" | sort | uniq >> tmp && mv tmp getUrlListOutputCombined.csv
-        #| sed "s/'('/\ \-\ /g" | sed "s/')'//g" | sed "s/  / /g" 
-    cat getUrlListOutputCombined.csv | while read LINE1
+        #| sed "s/'('/\ \-\ /g" | sed "s/')'//g" | sed "s/  / /g"
+    #rm -rf files/*
+    #rm -rf artbuffer/*
+    #rm -rf filebuffer/*
+    downloadAllTheThingsCounter=1
+    tidyList 3_listWithUrlFiles
+    TOTAL=`cat 2_listWithUrlLong.csv | wc -l`
+    cat 2_listWithUrlLong.csv | while read LINE
       do
-        #rm -rf files/*
-        echo $downloadAllTheThingsCounter ' ########## \n ' >> downloadAllTheThingsOutput.log
-        URL=`echo "${LINE1}" | cut -d \|  -f 2`
-        NAME=`echo "${LINE1}" | cut -d \|  -f 1 | sed 's/(/ - /g' | sed 's/)//g' | sed 's/  / /g'`
-       # youtube-dl "${URL}" --no-playlist -o "files/%(title)s.mp3" -x --embed-thumbnail 
+        echo "Downloading "$downloadAllTheThingsCounter " of ${TOTAL} \n "
+        ARTIST=`echo "${LINE}" | cut -d \|  -f 1`
+        TITLE=`echo "${LINE}" | cut -d \|  -f 2`
+        URL=`echo "${LINE}" | cut -d \|  -f 3`
+        if [[ -z ${URL} ]]; then
+            URL=${TITLE}
+            TITLE=${ARTIST}
+            ARTIST="Unknown"
+        fi
+        #NAME=`echo "${LINE}" | cut -d \|  -f 1 | sed 's/(/ - /g' | sed 's/)//g' | sed 's/  / /g'`
+        youtube-dl "${URL}" --no-playlist -o "files/%(title)s.mp3" -x --embed-thumbnail 
        
-
+        echo "ARTIST - ###############" $ARTIST
+        echo "TITLE - ###############" $TITLE
         echo "URL - ###############" $URL
-        echo "NAME - ###############" $NAME
-        ARTIST=`echo $NAME | sed 's/ - /-/g' | cut -d - -f 1 | sed 's/-/ - /g' | sed 's/  / /g'`
-        TITLE=`echo $NAME |sed 's/ - /-/g' | cut -d - -f 2-20 | sed 's/-/ - /g' | sed 's/  / /g'`
+
+        #ARTIST=`echo $NAME | sed 's/ - /-/g' | cut -d - -f 1 | sed 's/-/ - /g' | sed 's/  / /g'`
+        #TITLE=`echo $NAME |sed 's/ - /-/g' | cut -d - -f 2-20 | sed 's/-/ - /g' | sed 's/  / /g'`
         
 
         #>> downloadAllTheThingsOutput.log    
-        ((downloadAllTheThingsCounter++))
+        
         mv files/*.jpg artbuffer/"${downloadAllTheThingsCounter}".jpg
-        SOURCE_DETAIL=`ls files/*`
-        #mv files/* files/"${downloadAllTheThingsCounter}"
+        SOURCE_DETAIL=`ls files/*   `
+        SOURCE_DETAIL=`echo ${SOURCE_DETAIL} | cut -d \/ -f 2-`
+        mv files/* filebuffer/"${downloadAllTheThingsCounter}.mp3"
         #renameAllTheThings2 'files/*' 'ytb'
         #renameAllTheThings2 'artbuffer/*' 'jpg'
+        
+        echo ${downloadAllTheThingsCounter}'|'${ARTIST}'|'${TITLE}'|'${SOURCE_DETAIL} >> 3_listWithUrlFiles.csv
 
 
-
-        sleep 2
+        #sleep 2
 #FILO=`ls files/`
 #        ffmpeg -i "files/${FILO}" -vn -ab 192k -ar 44100 -metadata title="${TITLE}" -metadata ARTIST="${ARTIST}" -metadata COMMENT="${SOURCE_DETAIL}" -y "output/${NAME}.mp3"
-        rename -x files/* files/${downloadAllTheThingsCounter}
-        ls files/;
-        pwd
-        ls
-        sleep 17
-        read -p "Press any key to continue... ffmpeg -i ${FILE} -vn -ab 192k " -n1 -s
-        ffmpeg -i "files/${downloadAllTheThingsCounter}" -vn -ab 192k -ar 44100 -metadata title="${TITLE}" -metadata ARTIST="${ARTIST}" -metadata COMMENT="${COMMENT}" -y "files/tmp2.mp3"
-        ls files/;
-        ffmpeg -i "tmp" -i "artbuffer/${downloadAllTheThingsCounter}.jpg" -c copy -map 0 -map 1 -metadata:s:v title="Cover (front)" -y "output/${NAME}.mp3"
+        #rename -x files/* files/${downloadAllTheThingsCounter}
+        #ls files/;
+        #pwd
+        #ls
+        #sleep 17
+        #read -p "Press any key to continue... ffmpeg -i ${FILE} -vn -ab 192k " -n1 -s
+        #ffmpeg -i "files/${downloadAllTheThingsCounter}" -vn -ab 192k -ar 44100 -metadata title="${TITLE}" -metadata ARTIST="${ARTIST}" -metadata COMMENT="${COMMENT}" -y "files/tmp2.mp3"
+        #ls files/;
+        #ffmpeg -i "tmp" -i "artbuffer/${downloadAllTheThingsCounter}.jpg" -c copy -map 0 -map 1 -metadata:s:v title="Cover (front)" -y "output/${NAME}.mp3"
 
         #rm -rf artbuffer/*
         #read -p "Press any key to continue... renameAllTheThings 1"
@@ -60,14 +135,15 @@ function downloadAllTheThings () {
            # renameAllTheThings2
         #read -p "Press any key to continue... convertAllTheThings ytb ${SOURCE_DETAIL}"
             #convertAllTheThings ytb "${NAME}" "${SOURCE_DETAIL}"
-
+        ((downloadAllTheThingsCounter++))
       done
-      cat downloadAllTheThingsOutput.log | grep -v  >> tmp && mv tmp downloadAllTheThingsOutput.log
+      #cat downloadAllTheThingsOutput.log | grep -v  >> tmp && mv tmp downloadAllTheThingsOutput.log
 }
 
 function convertAllTheThings () {
     SRC_FORMAT=$1
     NAME=$2
+
 
     COMMENT="fish"
     for FILE in files/*.$SRC_FORMAT; do
@@ -243,24 +319,132 @@ function renameAllTheThings () {
 echo > downloadAllTheThingsOutput.log
 echo > convertAllTheThingsOutput.log
 
-convertAllTheThingsCounter=0
-downloadAllTheThingsCounter=0
+#convertAllTheThingsCounter=0
+#downloadAllTheThingsCounter=0
 
 rm -rf files/*
 rm -rf output/*
 rm -rf artbuffer/*
+rm -rf filebuffer/*
 
+mkdir filebuffer
 mkdir files/
 mkdir artbuffer/
 mkdir -p output/files/
 
 
 
+while test $# -gt 0; do
+        case "$1" in
+                -h|--help)
+                        echo "$package - attempt to capture frames"
+                        echo " "
+                        echo "$package [options] application [arguments]"
+                        echo " "
+                        echo "options:"
+                        echo "-h, --help                show brief help"
+                        echo "-a, --action=ACTION       specify an action to use"
+                        echo "-o, --output-dir=DIR      specify a directory to store output in"
+                        exit 0
+                        ;;
+                -f)
+                    #file name
+                        shift
+                        if test $# -gt 0; then
+                                export fileIn=$1
+                                    if [[ -n ${fileIn} && -n ${trackIn} ]]; then
+                                        echo "can't have a filez and track"
+                                        echo "f $fileIn"
+                                        echo "t $trackin"
+                                        break
+                                    fi
+                                cat $fileIn > rawTrack.csv
+                                export fileOut='rawTrack.csv'
+                        else
+                                echo "no filename specified"
+                                break
+                        fi
+                        shift
+                        ;;
+                -t)
+                    #single track
+                        shift
+                        if test $# -gt 0; then
+                                export trackIn=$1
+                                    if [[ -n ${fileIn} && -n ${trackIn} ]]; then
+                                        echo "can't have a file and track"
+                                        break
+                                    fi
+                                echo $trackIn > rawTrack.csv
+                                export fileOut='rawTrack.csv'
+                        else
+                                echo "no track specified"
+                                break
+                        fi
+                        shift
+                        ;;
+                -S)
+                    #sortlist
+                        shift
+                        if [[ -n ${fileOut} ]]; then
+                            export sortingList="true"
+                        else
+                            echo "no list or track specified"
+                            break
+                        fi
+                        shift
+                        ;;
+                -G*)
+                    #Get URL List
+                        shift
+                        #if [[ -n ${fileOut} ]]; then
+                            export gettingList="true"
+                        #    echo "GET IT"
+                        #else
+                        #    echo "no list or track specified"
+                        #    break
+                        #fi
+                        shift
+                        ;;
+                -D*)
+                    #Downloadfiles
+                        shift
+                        #if [[ -n ${fileOut} ]]; then
+                            export downloadingFiles="true"
+                        #    echo "GET IT"
+                        #else
+                        #    echo "no list or track specified"
+                        #    break
+                        #fi
+                        shift
+                        ;;
+                *)
+                        break
+                        ;;
+        esac
+done
+
+
+    if [[ -n ${sortingList} ]]; then
+        sortRawList rawTrack.csv
+        rm rawTrack.csv
+    fi
+
+    if [[ -n ${gettingList} ]]; then
+        echo "get it"
+        getYoutubeUrlList 0_sortedList.csv
+    fi
+
+
+    if [[ -n ${downloadingFiles} ]]; then
+        echo "Downloading"
+        downloadAllTheThings 3_listWithUrlFiles.csv
+    fi
 
 
 #getYoutubeUrlList $1
 
-downloadAllTheThings
+#downloadAllTheThings
 
 #cp -pr files files-bak
 
