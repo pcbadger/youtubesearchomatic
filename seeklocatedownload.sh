@@ -78,6 +78,8 @@ function downloadAllTheThings () {
     #rm -rf files/*
     #rm -rf artbuffer/*
     #rm -rf filebuffer/*
+    INPUT=S{1}
+    OUPUT=${2}
     downloadAllTheThingsCounter=1
     tidyList 3_listWithUrlFiles
     TOTAL=`cat 2_listWithUrlLong.csv | wc -l`
@@ -141,32 +143,66 @@ function downloadAllTheThings () {
 }
 
 function convertAllTheThings () {
+    INPUT=${1}
     SRC_FORMAT=$1
     NAME=$2
+    #TICKER=0
+    TOTAL=`cat ${INPUT} | wc -l`
+    cat ${INPUT} | while read LINE
+        do
+            TICKER=`${LINE} | cut -d \| -f 1`
+            ARTIST=`${LINE} | cut -d \| -f 2`
+            TITLE=`${LINE} | cut -d \| -f 3`
+            COMMENT=`${LINE} | cut -d \| -f 4`
+
+            if [[ -z ${ARTIST} ]]; then
+                ARTIST=`Unknown`
+            fi
+            if [[ -n ${COMMENT} ]]; then
+                IMAGE=artbuffer/${TICKER}.jpg
+                if [[ -e ${IMAGE} ]]; then
+                    IMAGE='mystery.gif'
+                fi
+
+                echo "Converting: ${TICKER} of ${TOTAL}"
+
+                ffmpeg -i "filebuffer/${TICKER}.mp3" -vn -ab 192k -ar 44100 -y "tmp.mp3"
+                echo "Adding metadata: ${TICKER} of ${TOTAL}"
+                ffmpeg -i "tmp.mp3" -i '${IMAGE}' -c copy -map 0 \
+                -map 1 -metadata:s:v title="Cover (front)" -metadata title='${TITLE}'\
+                 -metadata ARTIST='${ARTIST}' -metadata COMMENT='${COMMENT}' -y "output/${TITLE} - ${ARTIST}.mp3"
+        
+            else
+                echo '${TICKER} - ${TITLE} - ${ARTIST} not downloaded' >> error.log
+                echo '${TICKER} - ${TITLE} - ${ARTIST} not downloaded'
+            fi
+        done
+            #rename -x ${FILE} tmp1
+            #read -p "Press any key to continue... ffmpeg -i ${FILE} -vn -ab 192k " -n1 -s
+            #ffmpeg -i "filebuffer/${TICKER}.mp3" -vn -ab 192k -ar 44100 -metadata title="${TITLE}" -metadata ARTIST="${ARTIST}" -metadata COMMENT="${COMMENT}" -y "output/${TICKER}.mp3"
+            #ffmpeg -i "files/tmp" -i artbuffer/*.jpg -c copy -map 0 -map 1 -metadata:s:v title="Cover (front)" -y "output/${NAME}.mp3"
 
 
-    COMMENT="fish"
-    for FILE in files/*.$SRC_FORMAT; do
-        echo $convertAllTheThingsCounter ' ########## \n ' >> convertAllTheThingsOutput.log
-        echo -e "Processing video '$FILE'"
-        sleep 5
-        ARTIST=`echo $NAME | cut -d - -f 1`
-        TITLE=`echo $NAME | cut -d - -f 2`
+
+
+    #COMMENT="fish"
+    #for FILE in files/*.$SRC_FORMAT; do
+        #echo $convertAllTheThingsCounter ' ########## \n ' >> convertAllTheThingsOutput.log
+        #echo -e "Processing video '$FILE'"
+        #sleep 5
+        #ARTIST=`echo $NAME | cut -d - -f 1`
+        #TITLE=`echo $NAME | cut -d - -f 2`
         #ARTIST=`echo $FILE | cut -d - -f 1 | rev | cut -d \. -f 2 | rev`
         #TITLE=`echo $FILE | cut -d - -f 2 | rev | cut -d \. -f 2-40 | rev`
         #COMMENT=`echo $FILE | cut -d - -f 3,20 | rev | cut -d \. -f 2 | rev`
-        echo "comment " $COMMENT
-        echo
+        #echo "comment " $COMMENT
+        #echo
      #       if [[ $FILE != *\-* ]]; then
      #           TITLE=$ARTIST;
      #           ARTIST="Unknown";
      #           COMMENT="";
      #           echo "who dat?"
      #       fi
-        rename -x ${FILE} tmp1
-        read -p "Press any key to continue... ffmpeg -i ${FILE} -vn -ab 192k " -n1 -s
-        ffmpeg -i "${FILE}" -vn -ab 192k -ar 44100 -metadata title="${TITLE}" -metadata ARTIST="${ARTIST}" -metadata COMMENT="${COMMENT}" -y "files/tmp2.mp3"
-        ffmpeg -i "files/tmp" -i artbuffer/*.jpg -c copy -map 0 -map 1 -metadata:s:v title="Cover (front)" -y "output/${NAME}.mp3"
 
         #rm -rf files/*.ytb
         #>> convertAllTheThingsOutput.log;
@@ -177,11 +213,11 @@ function convertAllTheThings () {
        #     ffmpeg -i "${FILE2}" -i artbuffer/*.jpg -c copy -map 0 -map 1 -metadata:s:v title="Cover (front)" -y "output/${FILE2}"
        #     #rm -rf "${FILE}"  >> convertAllTheThingsOutput.log
        # done
-        rm -rf files/*
-        rm -rf artbuffer/*
-        sleep 5
+        #rm -rf files/*
+        #rm -rf artbuffer/*
+        #sleep 5
         # >> convertAllTheThingsOutput.log
-        ((convertAllTheThingsCounter++))
+        #((convertAllTheThingsCounter++))
     done;
 }
 
@@ -409,14 +445,12 @@ while test $# -gt 0; do
                 -D*)
                     #Downloadfiles
                         shift
-                        #if [[ -n ${fileOut} ]]; then
                             export downloadingFiles="true"
-                        #    echo "GET IT"
-                        #else
-                        #    echo "no list or track specified"
-                        #    break
-                        #fi
+                        ;;
+                -C*)
+                    #ConvertFiles
                         shift
+                            export convertingFiles="true"
                         ;;
                 *)
                         break
@@ -438,7 +472,13 @@ done
 
     if [[ -n ${downloadingFiles} ]]; then
         echo "Downloading"
-        downloadAllTheThings 3_listWithUrlFiles.csv
+        downloadAllTheThings 
+        #3_listWithUrlFiles.csv
+    fi
+
+    if [[ -n ${convertingFiles} ]]; then
+        echo "Converting"
+        convertAllTheThings 3_listWithUrlFiles.csv
     fi
 
 
