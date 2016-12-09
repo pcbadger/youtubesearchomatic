@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+#set -x
 
 function sortRawList () {
 
@@ -146,36 +146,45 @@ function convertAllTheThings () {
     INPUT=${1}
     SRC_FORMAT=$1
     NAME=$2
-    #TICKER=0
+    TICKER=1
     TOTAL=`cat ${INPUT} | wc -l`
     cat ${INPUT} | while read LINE
         do
-            TICKER=`${LINE} | cut -d \| -f 1`
-            ARTIST=`${LINE} | cut -d \| -f 2`
-            TITLE=`${LINE} | cut -d \| -f 3`
-            COMMENT=`${LINE} | cut -d \| -f 4`
+            TICKER=`echo ${LINE} | cut -d \| -f 1`
+            ARTIST=`echo ${LINE} | cut -d \| -f 2`
+            TITLE=`echo ${LINE} | cut -d \| -f 3`
+            COMMENT=`echo ${LINE} | cut -d \| -f 4`
 
             if [[ -z ${ARTIST} ]]; then
-                ARTIST=`Unknown`
+                ARTIST='Unknown'
             fi
-            if [[ -n ${COMMENT} ]]; then
-                IMAGE=artbuffer/${TICKER}.jpg
-                if [[ -e ${IMAGE} ]]; then
-                    IMAGE='mystery.gif'
+            if ! [[ -e "filebuffer/${COMMENT}.jpg" ]]; then
+                IMAGE="artbuffer/${TICKER}.jpg"
+                if ! [[ -e ${IMAGE} ]]; then
+                    IMAGE='mystery.jpg'
                 fi
 
-                echo "Converting: ${TICKER} of ${TOTAL}"
+                echo "Converting: ${TICKER} of ${TOTAL} - ${TITLE} - ${ARTIST}"
 
-                ffmpeg -i "filebuffer/${TICKER}.mp3" -vn -ab 192k -ar 44100 -y "tmp.mp3"
-                echo "Adding metadata: ${TICKER} of ${TOTAL}"
-                ffmpeg -i "tmp.mp3" -i '${IMAGE}' -c copy -map 0 \
-                -map 1 -metadata:s:v title="Cover (front)" -metadata title='${TITLE}'\
-                 -metadata ARTIST='${ARTIST}' -metadata COMMENT='${COMMENT}' -y "output/${TITLE} - ${ARTIST}.mp3"
-        
+                eval "ffmpeg -hide_banner -nostats -loglevel error -i \"filebuffer/\${TICKER}.mp3\" \
+                    -vn -ab 192k -ar 44100 -y \"tmp.mp3\" >/dev/null 2>&1 | grep -i \"error\""
+                sleep 2
+                echo "Adding metadata: ${TICKER} of ${TOTAL} - ${TITLE} - ${ARTIST}"
+                
+                #eval "ffmpeg -hide_banner -nostats -loglevel error -i \"tmp.mp3\" -i \"\${IMAGE}\" -c copy -map 0 -map 1 \
+                #-metadata:s:v title=\"Cover (front)\" -y \"tmp.mp3\"  >/dev/null 2>&1 | grep -i \"error\""
+                
+                eval "ffmpeg -hide_banner -nostats -loglevel error -i \"tmp.mp3\" -metadata title=\"\${TITLE}\" -metadata ARTIST=\"\${ARTIST}\" \
+                    -y \"output/${TICKER}.mp3\"  >/dev/null 2>&1 | grep -i \"error\""
+                
+                #eval "ffmpeg -hide_banner -nostats -loglevel error -i \"tmp.mp3\" \
+                #-metadata publisher=\"${COMMENT}\" -y \"output/${TICKER}.mp3\"  >/dev/null 2>&1 | grep -i \"error\""
+                #sleep 5
             else
-                echo '${TICKER} - ${TITLE} - ${ARTIST} not downloaded' >> error.log
-                echo '${TICKER} - ${TITLE} - ${ARTIST} not downloaded'
+                echo "${TICKER} - ${ARTIST} - ${TITLE} not downloaded" >> error.log
+                echo "${TICKER} - ${ARTIST} - ${TITLE} not downloaded"
             fi
+            #((TICKER++))
         done
             #rename -x ${FILE} tmp1
             #read -p "Press any key to continue... ffmpeg -i ${FILE} -vn -ab 192k " -n1 -s
@@ -218,7 +227,7 @@ function convertAllTheThings () {
         #sleep 5
         # >> convertAllTheThingsOutput.log
         #((convertAllTheThingsCounter++))
-    done;
+    
 }
 
 function renameAllTheThings2 () {
@@ -360,8 +369,8 @@ echo > convertAllTheThingsOutput.log
 
 rm -rf files/*
 rm -rf output/*
-rm -rf artbuffer/*
-rm -rf filebuffer/*
+#rm -rf artbuffer/*
+#rm -rf filebuffer/*
 
 mkdir filebuffer
 mkdir files/
@@ -478,7 +487,7 @@ done
 
     if [[ -n ${convertingFiles} ]]; then
         echo "Converting"
-        convertAllTheThings 3_listWithUrlFiles.csv
+        convertAllTheThings 3_listWithUrlFilesB.csv
     fi
 
 
