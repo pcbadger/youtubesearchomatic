@@ -19,23 +19,33 @@ import time
 reload(sys)
 sys.setdefaultencoding('utf8')
 
-workDir = "files"
-outputDir = "output"
+workDir = "files2"
+outputDir = "output2"
 mp3Tmp1 = workDir + "/tmp1.mp3"
 mp3Tmp2 = workDir + "/tmp2.mp3"
 jpgTmp = workDir + "/tmp.jpg"
+
 REV = None
 
-def makeTheDir(dir):
+
+
+
+def makeTheDir(dirc):
     try: 
-        os.makedirs(dir)
+        os.makedirs(dirc)
     except OSError:
-        if not os.path.isdir(dir):
+        if not os.path.isdir(dirc):
+            os.makedirs(dirc)
             raise
 
 def checkOptions(argv):
+    #global outputDir
+    #global workDir
+
+    #makeTheDir(outputDir)
+    #makeTheDir(workDir)
+
     global REV
-    global outputDir
 
     ARTIST = None
     TITLE = None
@@ -75,6 +85,7 @@ def checkOptions(argv):
             else:
                 print 'No such file!'
                 sys.exit()
+    
 
     if ARTIST is not None or TITLE is not None:
         getUrl(TITLE,ARTIST)
@@ -107,7 +118,6 @@ def reformat(STUFF):
     STUFF = re.sub(r'\'D ', '\'d ', STUFF)
     STUFF = re.sub(r'\'Re ', '\'re ', STUFF)
     STUFF = re.sub(r'\'Ll ', '\'ll ', STUFF)
-    print STUFF
     return STUFF
 
 
@@ -175,12 +185,11 @@ def processTrack(TRACK):
             ARTIST = splitTrack[-1]
             splitTrack.pop() 
             TITLE = ' - '.join(splitTrack)
-    #time.sleep(10)
-    #getUrlRetry(TITLE,ARTIST)
     getUrl(TITLE,ARTIST)
 
 
 def getUrl(TITLE,ARTIST):
+
     if ARTIST is None:
         textToSearch = TITLE
         ARTIST = 'Unknown'
@@ -189,6 +198,8 @@ def getUrl(TITLE,ARTIST):
         TITLE = 'Unknown'
     else:
         textToSearch = ARTIST + " " + TITLE
+
+    mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
 
     print "getting URL for " + textToSearch
 
@@ -220,23 +231,20 @@ def downloadFile(TITLE,ARTIST,RESULTURL):
     global mp3Tmp1
     global jpgTmp
 
-    dir = "files"
-    cleanFiles = os.listdir(dir)
+    mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
+
+    makeTheDir(workDir)
+    cleanFiles = os.listdir(workDir)
     for file in cleanFiles:
-        os.remove(os.path.join(dir,file))
+        os.remove(os.path.join(workDir,file))
 
-
-
-    
     def downloader(URL):
         global workDir
         print "Downloading " + TITLE + ' by ' + ARTIST + ' from ' + RESULTURL
         print subprocess.Popen("youtube-dl \'" + URL + "\' --no-playlist -o \'" + workDir + "/%(title)s.mp3\' -x --embed-thumbnail", shell=True, stdout=subprocess.PIPE).stdout.read()
         return 'Downloaded'
 
-    DOWNLOAD = retryFunc(downloader,RESULTURL,)
-    #print "DL" 
-    #print DOWNLOAD
+    DOWNLOAD = retryFunc(downloader,RESULTURL)
 
     if DOWNLOAD is not None:
         newFiles = os.listdir(workDir)
@@ -251,7 +259,7 @@ def downloadFile(TITLE,ARTIST,RESULTURL):
             thumbNailUrl = subprocess.Popen("youtube-dl \'" + RESULTURL + "\' --get-thumbnail ", shell=True, stdout=subprocess.PIPE).stdout.read()
             thumbNailUrl = thumbNailUrl.split('\n', 1)[0]
             thumbNail = urllib2.urlopen(thumbNailUrl)
-            with open('files/tmp.jpg','wb') as output:
+            with open(jpgTmp,'wb') as output:
               output.write(thumbNail.read())
 
         convertFile(TITLE,ARTIST,DESCRIPTION)
@@ -263,8 +271,11 @@ def convertFile(TITLE,ARTIST,DESCRIPTION):
     global jpgTmp
     global outputDir
 
+
     mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
     
+    makeTheDir(outputDir)
+
     # Reformatting the description, we don't have to be as fussy here
 
     DESCRIPTION = re.sub(r'[\"]', " ", DESCRIPTION)
@@ -299,7 +310,6 @@ def convertFile(TITLE,ARTIST,DESCRIPTION):
     print 
 
 
-makeTheDir(workDir)
 
 if __name__ == "__main__":
    checkOptions(sys.argv[1:])
