@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-
+from __future__ import unicode_literals
 import getopt
 import urllib
 import urllib2
@@ -15,12 +15,13 @@ import re
 import string
 import requests
 import time
+import youtube_dl
 
 reload(sys)
 sys.setdefaultencoding('utf8')
 
-workDir = "files2"
-outputDir = "output2"
+workDir = "files"
+outputDir = "output"
 mp3Tmp1 = workDir + "/tmp1.mp3"
 mp3Tmp2 = workDir + "/tmp2.mp3"
 jpgTmp = workDir + "/tmp.jpg"
@@ -39,11 +40,6 @@ def makeTheDir(dirc):
             raise
 
 def checkOptions(argv):
-    #global outputDir
-    #global workDir
-
-    #makeTheDir(outputDir)
-    #makeTheDir(workDir)
 
     global REV
 
@@ -90,6 +86,9 @@ def checkOptions(argv):
     if ARTIST is not None or TITLE is not None:
         getUrl(TITLE,ARTIST)
 
+def my_hook(d):
+    if d['status'] == 'finished':
+        print('Done downloading, now converting ...')
 
 def reformat(STUFF):
     print 'Reformatting '  + STUFF
@@ -113,7 +112,8 @@ def reformat(STUFF):
     # Converting to unicode to avoid umluats breaking things
     # Also, title case all the things, CHVRCHES can stop being so damn fussy
     STUFF = unicode(STUFF).title()
-    STUFF = re.sub(r'\'S ', '\'s ', STUFF)
+    STUFF = re.sub(r'I\'M', 'I\'m', STUFF)
+    STUFF = re.sub(r'\'S', '\'s', STUFF)
     STUFF = re.sub(r'\'T ', '\'t ', STUFF)
     STUFF = re.sub(r'\'D ', '\'d ', STUFF)
     STUFF = re.sub(r'\'Re ', '\'re ', STUFF)
@@ -140,11 +140,8 @@ def retryFunc(funk,grr):
             attempt += 1
             continue
     else:
-
-        print funk + grr + " - Can't do shit\n"
-        err = open('error.log','a+')
-        err.write( funk + " - Can't do shit\n") 
-        goodStuff = None
+        ohSmeg = funk + grr
+        errorOut(ohSmeg)
     return goodStuff
 
 
@@ -187,7 +184,6 @@ def processTrack(TRACK):
             TITLE = ' - '.join(splitTrack)
     getUrl(TITLE,ARTIST)
 
-
 def getUrl(TITLE,ARTIST):
 
     if ARTIST is None:
@@ -200,53 +196,71 @@ def getUrl(TITLE,ARTIST):
         textToSearch = ARTIST + " " + TITLE
 
     mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
+    if os.path.isfile(mp3Out):
+        skipIt(mp3Out)
+    else:
+        print "getting URL for " + textToSearch
 
-    print "getting URL for " + textToSearch
+        # Removing special characters from search string
+        rx = re.compile('\W+')
+        textToSearch = rx.sub(' ', textToSearch).strip()
 
-    # Removing special characters from search string
-    rx = re.compile('\W+')
-    textToSearch = rx.sub(' ', textToSearch).strip()
+        query = urllib.quote(textToSearch)
 
-    query = urllib.quote(textToSearch)
+        def youtubeUrlGetter(query):
+            youtube = "https://www.youtube.com/results?search_query=" + query
+            response = urllib2.urlopen(youtube)
+            html = response.read()
+            soup = BeautifulSoup(html, "html.parser")
+            for vid in soup.findAll(attrs={'class':'yt-uix-tile-link'})[:1]:
+                RESULTURL = 'https://www.youtube.com' + vid['href']
+                RESULTURL = RESULTURL.split('\n', 1)[0]
+            return RESULTURL
 
-    def youtubeUrlGetter(query):
-        youtube = "https://www.youtube.com/results?search_query=" + query
-        response = urllib2.urlopen(youtube)
-        html = response.read()
-        soup = BeautifulSoup(html, "html.parser")
-        for vid in soup.findAll(attrs={'class':'yt-uix-tile-link'})[:1]:
-            RESULTURL = 'https://www.youtube.com' + vid['href']
-        return RESULTURL
-
-    RESULTURL = retryFunc(youtubeUrlGetter,query)
-    if RESULTURL is not None:
-        downloadFile(TITLE,ARTIST,RESULTURL)
-
-
-
+        RESULTURL = retryFunc(youtubeUrlGetter,query)
+        if RESULTURL is None or RESULTURL.find("/channel/") != -1:
+            errorOut(RESULTURL)
+        else:
+            downloadFile(TITLE,ARTIST,RESULTURL)
+        
 
 def downloadFile(TITLE,ARTIST,RESULTURL):
     global workDir
     global outputDir
     global mp3Tmp1
     global jpgTmp
-
+    DESCRIPTION = None
     mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
+    if os.path.isfile(mp3Out):
+        skipIt(mp3Out)
+    else:
 
-    makeTheDir(workDir)
-    cleanFiles = os.listdir(workDir)
-    for file in cleanFiles:
-        os.remove(os.path.join(workDir,file))
+        makeTheDir(workDir)
+        cleanFiles = os.listdir(workDir)
+        for file in cleanFiles:
+            os.remove(os.path.join(workDir,file))
 
-    def downloader(URL):
-        global workDir
-        print "Downloading " + TITLE + ' by ' + ARTIST + ' from ' + RESULTURL
-        print subprocess.Popen("youtube-dl \'" + URL + "\' --no-playlist -o \'" + workDir + "/%(title)s.mp3\' -x --embed-thumbnail", shell=True, stdout=subprocess.PIPE).stdout.read()
-        return 'Downloaded'
+        def downloader(URL):
+            global workDir
+            print "Downloading " + TITLE + ' by ' + ARTIST + ' from ' + RESULTURL
+            ydl_opts = {
+            'ignoreerrors': 'true',
+            'noplaylist': 'true',
+            'writethumbnail': (workDir +'/%(title)s-.jpg'),
+            'format': 'bestaudio/best',
+            'outtmpl': (workDir +'/%(title)s|%(artist)s|%(track)s|%(album)s|%(release_year)s|%(genre)s|%(track_number)s|%(album_artist)s|-BATMAN|.tmp'), 
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '256',
+            }],
+            'progress_hooks': [my_hook],
+            }
+            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([RESULTURL + ' -s'])
 
-    DOWNLOAD = retryFunc(downloader,RESULTURL)
-
-    if DOWNLOAD is not None:
+        DOWNLOAD = retryFunc(downloader,RESULTURL)
+        
         newFiles = os.listdir(workDir)
         for file in newFiles:
             if file.endswith(".jpg"):
@@ -254,15 +268,23 @@ def downloadFile(TITLE,ARTIST,RESULTURL):
             else:
                 DESCRIPTION = file    
                 os.rename(os.path.join(workDir,file), mp3Tmp1 )
+       
+        if DESCRIPTION is None:
+            errorOut('file is not there' + TITLE + ' ' + ARTIST + ' ' + RESULTURL)
+        else:
+            convertFile(TITLE,ARTIST,DESCRIPTION)
 
+        ## Pretty sure this bit is redundant thanks to the writethumbnail ydl option
         if not os.path.isfile( jpgTmp ):
             thumbNailUrl = subprocess.Popen("youtube-dl \'" + RESULTURL + "\' --get-thumbnail ", shell=True, stdout=subprocess.PIPE).stdout.read()
             thumbNailUrl = thumbNailUrl.split('\n', 1)[0]
             thumbNail = urllib2.urlopen(thumbNailUrl)
             with open(jpgTmp,'wb') as output:
               output.write(thumbNail.read())
+        
 
-        convertFile(TITLE,ARTIST,DESCRIPTION)
+        WHOOPS = " Can't download " + TITLE + " - " + ARTIST + " from " + RESULTURL + " sorrynotsorry"
+
 
 
 def convertFile(TITLE,ARTIST,DESCRIPTION):
@@ -270,46 +292,75 @@ def convertFile(TITLE,ARTIST,DESCRIPTION):
     global mp3Tmp2
     global jpgTmp
     global outputDir
-
-
     mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
-    
-    makeTheDir(outputDir)
 
-    # Reformatting the description, we don't have to be as fussy here
-
-    DESCRIPTION = re.sub(r'[\"]', " ", DESCRIPTION)
-    DESCRIPTION = re.sub(r'\..*$', "", DESCRIPTION)
-
-    print "Converting from " + DESCRIPTION + " to " + TITLE + ' by ' + ARTIST
-    print subprocess.Popen("ffmpeg -hide_banner -nostats -loglevel error -i \'" + mp3Tmp1 + "\' -vn -ab 192k -ar 44100 -y \'" + mp3Tmp2 + "\' ", shell=True, stdout=subprocess.PIPE).stdout.read()
-
-    print "Adding metadata to " + TITLE + ' by ' + ARTIST
-
-
-    if os.path.isfile( jpgTmp ):
-        COVER = "Cover (front)"
-        print "Adding Cover to " + TITLE + ' by ' + ARTIST
-        addCover = " -i \"" + jpgTmp + "\"  -map 0 -map 1 -metadata:s:v title=\"" + COVER + "\""
+    if os.path.isfile(mp3Out):
+        skipIt(mp3Out)
     else:
-        addCover = ''
+        makeTheDir(outputDir)
 
-    print subprocess.Popen("ffmpeg -hide_banner -nostats -loglevel error -i \"" + mp3Tmp2 + "\"  " + addCover + "  -metadata title=\"" + TITLE + "\" -metadata ARTIST=\"" + ARTIST + "\" -metadata publisher=\"" + DESCRIPTION + "\" -c copy -y \'" + mp3Tmp1 + "\' ", shell=True, stdout=subprocess.PIPE).stdout.read()
+        # Reformatting the description, we don't have to be as fussy here
 
-    print "Renaming to " + mp3Out
-    os.rename(mp3Tmp1, mp3Out )
+        DESCRIPTION = re.sub(r'[\"]', " ", DESCRIPTION)
+        DESCRIPTION = re.sub(r"\|NA\|", "||", DESCRIPTION)
+        DESCRIPTION = re.sub(r"\|NA\|", "||", DESCRIPTION)
+        splitTrack = DESCRIPTION.split("|")
 
-    if not os.path.isfile(mp3Out):
-        print "ruh roh!"
-        err = open('error.log','a+')
-        err.write( TITLE + ' - ' + ARTIST + ' - ' + DESCRIPTION + " - File not converted\n") 
+        print "Description " + DESCRIPTION
 
-    print "Done!"
-    print
-    print "#############"
-    print 
+        origTitle = splitTrack[0]
+        if splitTrack[1] != '':
+            ARTIST = splitTrack[1]
+            ARTIST = reformat(ARTIST)
+        if splitTrack[2] != '':
+            TITLE = splitTrack[2]
+            TITLE = reformat(TITLE)
 
+        newAlbum = splitTrack[3]
+        newRelYear = splitTrack[4]
+        newGenre = splitTrack[5]
+        newTrackNumber = splitTrack[6]
+        newAlbumArtist = splitTrack[7]
 
+        print "Adding metadata to " + TITLE + ' by ' + ARTIST
+
+        if os.path.isfile( jpgTmp ):
+            COVER = "Cover (front)"
+            print "Adding Cover to " + TITLE + ' by ' + ARTIST
+            addCover = " -i \"" + jpgTmp + "\"  -map 0 -map 1 -metadata:s:v title=\"" + COVER + "\""
+        else:
+            addCover = ''
+
+        # Should probably replace this with the ffmpeg python module, but I couldn't be bothered right now
+        print subprocess.Popen("ffmpeg -hide_banner -nostats -loglevel error -i \"" + mp3Tmp1 + "\"  " + addCover + "  \
+            -metadata title=\"" + TITLE + "\" -metadata ARTIST=\"" + ARTIST + "\" \
+            -metadata album=\"" + newAlbum + "\" -metadata year=\"" + newRelYear + "\"\
+            -metadata genre=\"" + newGenre + "\" -metadata track=\"" + newTrackNumber + "\"\
+            -metadata album_artist=\"" + newAlbumArtist + "\" -metadata comment=\"" + origTitle + "\"\
+            -c copy -y \'" + mp3Tmp2 + "\' ", shell=True, stdout=subprocess.PIPE).stdout.read()
+        # Can you tell I originally wrote this in bash?
+
+        print "Renaming to " + mp3Out
+        os.rename(mp3Tmp2, mp3Out )
+
+        if not os.path.isfile(mp3Out):
+            print "ruh roh!"
+            oops = TITLE + ' - ' + ARTIST + ' - ' + DESCRIPTION + " - File not converted\n"
+            errorOut(oops)
+
+        print "Done!"
+        print
+        print "#############"
+        print 
+
+def errorOut(oops):
+    print "Whoops"
+    print "Can't do " + oops
+    err = open('error.log','a+')
+    err.write( oops + " - feck!\n") 
+
+def skipIt(bopIt):
+    print bopIt + " already exists, skipping"
 
 if __name__ == "__main__":
    checkOptions(sys.argv[1:])
