@@ -37,7 +37,6 @@ def makeTheDir(dirc):
             raise
 
 def checkOptions(argv):
-
     global REV
 
     ARTIST = None
@@ -111,6 +110,7 @@ def reformat(STUFF):
     STUFF = unicode(STUFF).title()
     STUFF = re.sub(r'I\'M', 'I\'m', STUFF)
     STUFF = re.sub(r'\'S', '\'s', STUFF)
+    STUFF = re.sub(r'\'S ', '\'s ', STUFF)
     STUFF = re.sub(r'\'T ', '\'t ', STUFF)
     STUFF = re.sub(r'\'D ', '\'d ', STUFF)
     STUFF = re.sub(r'\'Re ', '\'re ', STUFF)
@@ -139,6 +139,11 @@ def retryFunc(funk,grr):
     else:
         ohSmeg = funk + grr
         errorOut(ohSmeg)
+
+        print funk + grr + " - Can't do shit\n"
+        err = open('error.log','a+')
+        err.write( funk + " - Can't do shit\n") 
+        goodStuff = None
     return goodStuff
 
 
@@ -193,6 +198,7 @@ def getUrl(TITLE,ARTIST):
         textToSearch = ARTIST + " " + TITLE
 
     mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
+
     if os.path.isfile(mp3Out):
         skipIt(mp3Out)
     else:
@@ -219,7 +225,27 @@ def getUrl(TITLE,ARTIST):
             errorOut(RESULTURL)
         else:
             downloadFile(TITLE,ARTIST,RESULTURL)
-        
+
+    print "getting URL for " + textToSearch
+
+    # Removing special characters from search string
+    rx = re.compile('\W+')
+    textToSearch = rx.sub(' ', textToSearch).strip()
+
+    query = urllib.quote(textToSearch)
+
+    def youtubeUrlGetter(query):
+        youtube = "https://www.youtube.com/results?search_query=" + query
+        response = urllib2.urlopen(youtube)
+        html = response.read()
+        soup = BeautifulSoup(html, "html.parser")
+        for vid in soup.findAll(attrs={'class':'yt-uix-tile-link'})[:1]:
+            RESULTURL = 'https://www.youtube.com' + vid['href']
+        return RESULTURL
+
+    RESULTURL = retryFunc(youtubeUrlGetter,query)
+    if RESULTURL is not None:
+        downloadFile(TITLE,ARTIST,RESULTURL)
 
 def downloadFile(TITLE,ARTIST,RESULTURL):
     global workDir
@@ -227,6 +253,7 @@ def downloadFile(TITLE,ARTIST,RESULTURL):
     global mp3Tmp1
     global jpgTmp
     DESCRIPTION = None
+
     mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
     if os.path.isfile(mp3Out):
         skipIt(mp3Out)
@@ -258,6 +285,21 @@ def downloadFile(TITLE,ARTIST,RESULTURL):
 
         DOWNLOAD = retryFunc(downloader,RESULTURL)
         
+
+    makeTheDir(workDir)
+    cleanFiles = os.listdir(workDir)
+    for file in cleanFiles:
+        os.remove(os.path.join(workDir,file))
+
+    def downloader(URL):
+        global workDir
+        print "Downloading " + TITLE + ' by ' + ARTIST + ' from ' + RESULTURL
+        print subprocess.Popen("youtube-dl \'" + URL + "\' --no-playlist -o \'" + workDir + "/%(title)s.mp3\' -x --embed-thumbnail", shell=True, stdout=subprocess.PIPE).stdout.read()
+        return 'Downloaded'
+
+    DOWNLOAD = retryFunc(downloader,RESULTURL)
+
+    if DOWNLOAD is not None:
         newFiles = os.listdir(workDir)
         for file in newFiles:
             if file.endswith(".jpg"):
@@ -278,7 +320,6 @@ def downloadFile(TITLE,ARTIST,RESULTURL):
             thumbNail = urllib2.urlopen(thumbNailUrl)
             with open(jpgTmp,'wb') as output:
               output.write(thumbNail.read())
-        
 
         WHOOPS = " Can't download " + TITLE + " - " + ARTIST + " from " + RESULTURL + " sorrynotsorry"
 
@@ -289,6 +330,7 @@ def convertFile(TITLE,ARTIST,DESCRIPTION):
     global mp3Tmp2
     global jpgTmp
     global outputDir
+
     mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
 
     if os.path.isfile(mp3Out):
