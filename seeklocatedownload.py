@@ -29,8 +29,6 @@ jpgTmp = workDir + "/tmp.jpg"
 REV = None
 
 
-
-
 def makeTheDir(dirc):
     try: 
         os.makedirs(dirc)
