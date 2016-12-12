@@ -25,7 +25,6 @@ outputDir = "output"
 mp3Tmp1 = workDir + "/tmp1.mp3"
 mp3Tmp2 = workDir + "/tmp2.mp3"
 jpgTmp = workDir + "/tmp.jpg"
-
 REV = None
 
 
