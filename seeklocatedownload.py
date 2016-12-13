@@ -16,6 +16,8 @@ import string
 import requests
 import time
 import youtube_dl
+doThis = 'goat'
+withThis = 'goat'
 
 reload(sys)
 sys.setdefaultencoding('utf8')
@@ -26,7 +28,7 @@ mp3Tmp1 = workDir + "/tmp1.mp3"
 mp3Tmp2 = workDir + "/tmp2.mp3"
 jpgTmp = workDir + "/tmp.jpg"
 REV = None
-
+searchAttempt = 0
 
 def makeTheDir(dirc):
     try: 
@@ -126,10 +128,14 @@ def getTitleFromUrl(URLarg):
     return URLarg
 
 
-def retryFunc(funk,grr):
+def retryFunc(doThis,withThis):
+#def retryFunc(**kwargs):
+    #global doThis
+    #global withThis
+
     for attempt in range(1,20):
         try:
-            goodStuff = funk(grr)
+            goodStuff = doThis(withThis)
             break
         except (requests.exceptions.ConnectionError,URLError,HTTPError):
             time.sleep(2)
@@ -137,17 +143,19 @@ def retryFunc(funk,grr):
             attempt += 1
             continue
     else:
-        ohSmeg = funk + grr
+        ohSmeg = "BadFunk " + doThis + withThis
         errorOut(ohSmeg)
 
-        print funk + grr + " - Can't do shit\n"
+        print doThis + withThis + " - Can't do shit\n"
         err = open('error.log','a+')
-        err.write( funk + " - Can't do shit\n") 
+        err.write( doThis + withThis + " - Can't do shit\n") 
         goodStuff = None
     return goodStuff
 
 
 def processCSV(CSV):
+    #global doThis
+    #global withThis
 
     print 'Processing CSV!'
     f = open(CSV)
@@ -155,7 +163,9 @@ def processCSV(CSV):
 
     while line:
         if re.match(r'^(http|HTTP)', line):
-            line=retryFunc(getTitleFromUrl,line)
+            line = retryFunc(getTitleFromUrl,line)
+
+            #lino = retryFunc(doThis = 'getTitleFromUrl',withThis = 'line')
         if line is not None:
             processTrack(line)
             line = f.readline()
@@ -184,9 +194,10 @@ def processTrack(TRACK):
             ARTIST = splitTrack[-1]
             splitTrack.pop() 
             TITLE = ' - '.join(splitTrack)
-    getUrl(TITLE,ARTIST)
+    getQuery(TITLE,ARTIST)
 
-def getUrl(TITLE,ARTIST):
+
+def getQuery(TITLE,ARTIST):
 
     if ARTIST is None:
         textToSearch = TITLE
@@ -197,94 +208,68 @@ def getUrl(TITLE,ARTIST):
     else:
         textToSearch = ARTIST + " " + TITLE
 
-    mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
-
-    if os.path.isfile(mp3Out):
-        skipIt(mp3Out)
-    else:
-        print "getting URL for " + textToSearch
-
-        # Removing special characters from search string
-        rx = re.compile('\W+')
-        textToSearch = rx.sub(' ', textToSearch).strip()
-
-        query = urllib.quote(textToSearch)
-
-        def youtubeUrlGetter(query):
-            youtube = "https://www.youtube.com/results?search_query=" + query
-            response = urllib2.urlopen(youtube)
-            html = response.read()
-            soup = BeautifulSoup(html, "html.parser")
-            for vid in soup.findAll(attrs={'class':'yt-uix-tile-link'})[:1]:
-                RESULTURL = 'https://www.youtube.com' + vid['href']
-                RESULTURL = RESULTURL.split('\n', 1)[0]
-            return RESULTURL
-
-        RESULTURL = retryFunc(youtubeUrlGetter,query)
-        if RESULTURL is None or RESULTURL.find("/channel/") != -1:
-            errorOut(RESULTURL)
-        else:
-            downloadFile(TITLE,ARTIST,RESULTURL)
+    global globTITLE
+    global globARTIST
+    globTITLE = TITLE
+    globARTIST = ARTIST
 
     print "getting URL for " + textToSearch
 
     # Removing special characters from search string
     rx = re.compile('\W+')
     textToSearch = rx.sub(' ', textToSearch).strip()
-
     query = urllib.quote(textToSearch)
 
-    def youtubeUrlGetter(query):
-        youtube = "https://www.youtube.com/results?search_query=" + query
-        response = urllib2.urlopen(youtube)
-        html = response.read()
-        soup = BeautifulSoup(html, "html.parser")
-        for vid in soup.findAll(attrs={'class':'yt-uix-tile-link'})[:1]:
-            RESULTURL = 'https://www.youtube.com' + vid['href']
-        return RESULTURL
+    # Check to see if we've already done this one
+    mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
+    if os.path.isfile(mp3Out):
+        statinfo = os.stat(mp3Out)
+        if statinfo.st_size > 5000:
+            skipIt(mp3Out)
+        else:
+            #RESULTURL = retryFunc(doThis=youtubeVidGetter,withThis=query)
+            RESULTURL = retryFunc(youtubeVidGetter,query)
+    else:
+        RESULTURL = retryFunc(youtubeVidGetter,query)
 
-    RESULTURL = retryFunc(youtubeUrlGetter,query)
-    if RESULTURL is not None:
-        downloadFile(TITLE,ARTIST,RESULTURL)
+
+def youtubeVidGetter(query):
+    global searchAttempt
+    global globTITLE
+    global globARTIST
+
+    searchAttempt += 1
+
+    print "search attempt " + str(searchAttempt)
+    youtube = "https://www.youtube.com/results?search_query=" + query
+    response = urllib2.urlopen(youtube)
+    html = response.read()
+    soup = BeautifulSoup(html, "html.parser")
+    for vid in soup.findAll(attrs={'class':'yt-uix-tile-link'})[:searchAttempt]:
+        RESULTURL = 'https://www.youtube.com' + vid['href'] + "\n"
+
+    RESULTURL = RESULTURL.split('\n', 1)[0]
+
+    if RESULTURL is None or RESULTURL.find("/channel/") != -1 or RESULTURL.find("/user/") != -1:
+        RESULTURL = retryFunc(youtubeVidGetter,query)
+        bloominEck = "channel or user in "
+         #+ RESULTURL
+        errorOut(bloominEck)
+    else:
+        downloadFile(globTITLE,globARTIST,RESULTURL)
+        #return RESULTURL
 
 def downloadFile(TITLE,ARTIST,RESULTURL):
+    global globTITLE
+    global globARTIST
     global workDir
     global outputDir
     global mp3Tmp1
     global jpgTmp
     DESCRIPTION = None
-
-    mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
-    if os.path.isfile(mp3Out):
-        skipIt(mp3Out)
-    else:
-
-        makeTheDir(workDir)
-        cleanFiles = os.listdir(workDir)
-        for file in cleanFiles:
-            os.remove(os.path.join(workDir,file))
-
-        def downloader(URL):
-            global workDir
-            print "Downloading " + TITLE + ' by ' + ARTIST + ' from ' + RESULTURL
-            ydl_opts = {
-            'ignoreerrors': 'true',
-            'noplaylist': 'true',
-            'writethumbnail': (workDir +'/%(title)s-.jpg'),
-            'format': 'bestaudio/best',
-            'outtmpl': (workDir +'/%(title)s|%(artist)s|%(track)s|%(album)s|%(release_year)s|%(genre)s|%(track_number)s|%(album_artist)s|-BATMAN|.tmp'), 
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '256',
-            }],
-            'progress_hooks': [my_hook],
-            }
-            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([RESULTURL + ' -s'])
-
-        DOWNLOAD = retryFunc(downloader,RESULTURL)
-        
+    # If I could figure out kwargs, I wouldn't need this
+    TITLE = globTITLE
+    ARTIST = globARTIST
 
     makeTheDir(workDir)
     cleanFiles = os.listdir(workDir)
@@ -294,10 +279,26 @@ def downloadFile(TITLE,ARTIST,RESULTURL):
     def downloader(URL):
         global workDir
         print "Downloading " + TITLE + ' by ' + ARTIST + ' from ' + RESULTURL
-        print subprocess.Popen("youtube-dl \'" + URL + "\' --no-playlist -o \'" + workDir + "/%(title)s.mp3\' -x --embed-thumbnail", shell=True, stdout=subprocess.PIPE).stdout.read()
-        return 'Downloaded'
+        ydl_opts = {
+        'ignoreerrors': 'true',
+        'noplaylist': 'true',
+        'writethumbnail': (workDir +'/%(title)s-.jpg'),
+        'format': 'bestaudio/best',
+        'outtmpl': (workDir +'/%(title)s|%(artist)s|%(track)s|%(album)s|%(release_year)s|%(genre)s|%(track_number)s|%(album_artist)s|-BATMAN|.tmp'), 
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '256',
+        }],
+        'progress_hooks': [my_hook],
+        }
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            downLoadIt = ydl.download([RESULTURL + ' -s'])
+        return downLoadIt
 
+    #print "that bit"
     DOWNLOAD = retryFunc(downloader,RESULTURL)
+    #print "this bit"
 
     if DOWNLOAD is not None:
         newFiles = os.listdir(workDir)
@@ -320,9 +321,9 @@ def downloadFile(TITLE,ARTIST,RESULTURL):
             thumbNail = urllib2.urlopen(thumbNailUrl)
             with open(jpgTmp,'wb') as output:
               output.write(thumbNail.read())
-
+    else:
         WHOOPS = " Can't download " + TITLE + " - " + ARTIST + " from " + RESULTURL + " sorrynotsorry"
-
+        errorOut(WHOOPS)
 
 
 def convertFile(TITLE,ARTIST,DESCRIPTION):
@@ -330,23 +331,23 @@ def convertFile(TITLE,ARTIST,DESCRIPTION):
     global mp3Tmp2
     global jpgTmp
     global outputDir
+    global searchAttempt
 
     mp3Out = outputDir + "/" + ARTIST + " - " + TITLE + ".mp3"
 
-    if os.path.isfile(mp3Out):
-        skipIt(mp3Out)
-    else:
-        makeTheDir(outputDir)
+    makeTheDir(outputDir)
 
-        # Reformatting the description, we don't have to be as fussy here
+    # Reformatting the description, we don't have to be as fussy here
 
-        DESCRIPTION = re.sub(r'[\"]', " ", DESCRIPTION)
-        DESCRIPTION = re.sub(r"\|NA\|", "||", DESCRIPTION)
-        DESCRIPTION = re.sub(r"\|NA\|", "||", DESCRIPTION)
-        splitTrack = DESCRIPTION.split("|")
+    # This bit is to extract the album metadata from the youtube video
+    # but so far I haven't seen a successful one yet
+    DESCRIPTION = re.sub(r'[\"]', " ", DESCRIPTION)
+    DESCRIPTION = re.sub(r"\|NA\|", "||", DESCRIPTION)
+    DESCRIPTION = re.sub(r"\|NA\|", "||", DESCRIPTION)
+    splitTrack = DESCRIPTION.split("|")
 
-        print "Description " + DESCRIPTION
-
+    print "Description " + DESCRIPTION
+    if DESCRIPTION.find("|") != -1:
         origTitle = splitTrack[0]
         if splitTrack[1] != '':
             ARTIST = splitTrack[1]
@@ -360,46 +361,62 @@ def convertFile(TITLE,ARTIST,DESCRIPTION):
         newGenre = splitTrack[5]
         newTrackNumber = splitTrack[6]
         newAlbumArtist = splitTrack[7]
+    else:
+        print "Looks like we tried to download an entire channel or user"
+        origTitle = re.sub(r'[\..]$', " ", DESCRIPTION)
+        newAlbum = ''
+        newRelYear = ''
+        newGenre = ''
+        newTrackNumber = ''
+        newAlbumArtist = ''
+    ####
 
-        print "Adding metadata to " + TITLE + ' by ' + ARTIST
+    print "Adding metadata to " + TITLE + ' by ' + ARTIST
 
-        if os.path.isfile( jpgTmp ):
-            COVER = "Cover (front)"
-            print "Adding Cover to " + TITLE + ' by ' + ARTIST
-            addCover = " -i \"" + jpgTmp + "\"  -map 0 -map 1 -metadata:s:v title=\"" + COVER + "\""
-        else:
-            addCover = ''
+    if os.path.isfile( jpgTmp ):
+        COVER = "Cover (front)"
+        print "Adding Cover to " + TITLE + ' by ' + ARTIST
+        addCover = " -i \"" + jpgTmp + "\"  -map 0 -map 1 -metadata:s:v title=\"" + COVER + "\""
+    else:
+        addCover = ''
 
-        # Should probably replace this with the ffmpeg python module, but I couldn't be bothered right now
-        print subprocess.Popen("ffmpeg -hide_banner -nostats -loglevel error -i \"" + mp3Tmp1 + "\"  " + addCover + "  \
-            -metadata title=\"" + TITLE + "\" -metadata ARTIST=\"" + ARTIST + "\" \
-            -metadata album=\"" + newAlbum + "\" -metadata year=\"" + newRelYear + "\"\
-            -metadata genre=\"" + newGenre + "\" -metadata track=\"" + newTrackNumber + "\"\
-            -metadata album_artist=\"" + newAlbumArtist + "\" -metadata comment=\"" + origTitle + "\"\
-            -c copy -y \'" + mp3Tmp2 + "\' ", shell=True, stdout=subprocess.PIPE).stdout.read()
-        # Can you tell I originally wrote this in bash?
+    # Should probably replace this with the ffmpeg python module, but I couldn't be bothered right now
+    print subprocess.Popen("ffmpeg -hide_banner -nostats -loglevel error -i \"" + mp3Tmp1 + "\"  " + addCover + "  \
+        -metadata title=\"" + TITLE + "\" -metadata ARTIST=\"" + ARTIST + "\" \
+        -metadata album=\"" + newAlbum + "\" -metadata year=\"" + newRelYear + "\"\
+        -metadata genre=\"" + newGenre + "\" -metadata track=\"" + newTrackNumber + "\"\
+        -metadata album_artist=\"" + newAlbumArtist + "\" -metadata comment=\"" + origTitle + "\"\
+        -c copy -y \'" + mp3Tmp2 + "\' ", shell=True, stdout=subprocess.PIPE).stdout.read()
+    # Can you tell I originally wrote this in bash?
 
-        print "Renaming to " + mp3Out
-        os.rename(mp3Tmp2, mp3Out )
+    print "Renaming to " + mp3Out
+    os.rename(mp3Tmp2, mp3Out )
+    statinfo = os.stat(mp3Out)
 
-        if not os.path.isfile(mp3Out):
-            print "ruh roh!"
-            oops = TITLE + ' - ' + ARTIST + ' - ' + DESCRIPTION + " - File not converted\n"
-            errorOut(oops)
+    if not os.path.isfile(mp3Out) or statinfo.st_size < 500:
+        print "ruh roh!"
+        searchQuery = TITLE + ' ' + ARTIST
+        newResultUrl = retryFunc(youtubeUrlGetter,searchQuery)
+        downloadFile(TITLE,ARTIST,newResultUrl)
+        oops = TITLE + ' - ' + ARTIST + ' - ' + DESCRIPTION + " - File not converted\n"
+        errorOut(oops)
 
-        print "Done!"
-        print
-        print "#############"
-        print 
+    searchAttempt = 0
+    print "Done!"
+    print
+    print "#############"
+    print 
 
 def errorOut(oops):
     print "Whoops"
     print "Can't do " + oops
+    #retryFunc(youtubeUrlGetter,oops)
     err = open('error.log','a+')
     err.write( oops + " - feck!\n") 
 
 def skipIt(bopIt):
     print bopIt + " already exists, skipping"
+    searchAttempt = 0
 
 if __name__ == "__main__":
    checkOptions(sys.argv[1:])
