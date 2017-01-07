@@ -40,10 +40,11 @@ reload(sys)
 sys.setdefaultencoding('utf8')
 
 mp3FileName = ''
+titleFromFile = ''
 
 def checkForJunkEntry(tagToCheck):
 
-
+	#print "Checking " +  tagToCheck
 	#if re.match(r'^(http|HTTP)', line)
 	#tagToCheck = tagToCheck.sub(r'  ', ' ', tagToCheck)
 	if re.match(r'^(unknown|na|n\/A|none|null|\ )$', tagToCheck, re.IGNORECASE):
@@ -83,10 +84,36 @@ def gSuggDidYouMean(q):
     except AttributeError:
         result = 1
     print result
+    if result == q:
+    	result = ''
+    	print "no new match!"
     return result
 
 
-
+def sanitiseString(tagToCheck):
+	# Strip all the crap out of the string, maybe we'll get a result now
+	# Bit of a last ditch effort this
+	sanitisedTagToCheck = ''
+	rx = re.compile('\W+')
+	#print "this tag0 " + tagToCheck
+	tagIn = rx.sub(' ', tagToCheck).strip()
+	#print "this tag1 " + tagIn
+	tagIn = re.sub(r'(live|audio|hd|HQ|1080p|official|video)', ' ', tagIn, re.IGNORECASE)
+	#print "this tag2 " + tagIn
+	tagIn = re.sub(r' (\([0-9])\w+\)', '', tagIn)
+	#print "this tag3 " + tagIn
+	tagIn = re.sub(r'  ', ' ', tagIn)
+	checkGoogle = gSuggDidYouMean(str(tagIn))
+	#print "this tag4 " + tagIn
+	if checkGoogle:
+		if checkGoogle != str(tagToCheck):
+			sanitisedTagToCheck = checkGoogle	
+	else:
+		if tagIn != str(tagToCheck):
+			sanitisedTagToCheck = tagIn	
+		
+	print "SANITISED: " + str(sanitisedTagToCheck)
+	return sanitisedTagToCheck
 
 def getTagsFromFile (fileName):
 	global ipArtist
@@ -97,6 +124,7 @@ def getTagsFromFile (fileName):
 	global ipGenre
 	global ipCover
 	global mp3FileName
+	global titleFromFile
 
 	ipArtist      = 'TAG_IS_EMPTY'
 	ipTitle       = 'TAG_IS_EMPTY'
@@ -110,73 +138,85 @@ def getTagsFromFile (fileName):
 	try:
 		mp3info = EasyID3(fileName)
 	except:
-		destination="OUTPUT_5_WEIRD/" + mp3FileName
-		makeTheDir("OUTPUT_5_WEIRD")
-		os.rename(source, destination )
-		return ''
+		#try:
+		#	mp3info = EasyID3(fileName)
+		#except mutagen.id3.ID3NoHeaderError:
+		mp3info = mutagen.File(fileName, easy=True)
+		mp3info.add_tags()
+		mp3info
+		mp3info.save()
+		#destination="OUTPUT_5_WEIRD/" + mp3FileName
+		#makeTheDir("OUTPUT_5_WEIRD")
+		#os.rename(source, destination )
+		#return ''
 
-	print mp3info
-	try:
-		ipArtist = mp3info['artist'][0]
-		ipArtist = checkForJunkEntry(ipArtist)
-	except KeyError:
-		pass
+	print fileName + str(mp3info)
 
-	try:
-		ipTitle = mp3info['title'][0]
-		ipTitle = checkForJunkEntry(ipTitle)
-	except KeyError:
-		pass
+	def checkTag(varName,tagName):
+		try:
+			varName = mp3info[tagName][0]
+			varName = checkForJunkEntry(varName)
+		except KeyError:
+			varName = 'TAG_IS_EMPTY'
+		return varName
 
-	try:
-		ipAlbumTitle = mp3info['album'][0]
-		ipAlbumTitle = checkForJunkEntry(ipAlbumTitle)
-	except KeyError:
-		pass
+	ipAlbumTitle  = checkTag('ipAlbumTitle','album')
+	ipAlbumArtist = checkTag('ipAlbumArtist','albumartist')
+	ipGenre       = checkTag('ipGenre','genre')
+	ipArtist      = checkTag('ipArtist','artist')
+	ipTitle       = checkTag('ipTitle','title')
 
-	try:
-		ipAlbumArtist = mp3info['albumartist'][0]
-		ipAlbumArtist = checkForJunkEntry(ipAlbumArtist)
-	except KeyError:
-		pass
+	if ipArtist == 'TAG_IS_EMPTY':
+		sQ1 = ''
+	else:
+		sQ1 = ipArtist
 
-	try:
-		ipReleaseYear = mp3info['date'][0]
-		ipReleaseYear = checkForJunkEntry(ipReleaseYear)
+	if ipTitle == 'TAG_IS_EMPTY':
+		sQ2 = ''
+	else:
+		sQ2 = ipTitle
+
+	if checkTag('ipReleaseYear','date'):
+		ipReleaseYear = checkTag('ipReleaseYear','date')
 		try:
 			if int(ipReleaseYear) < 1900 or int(ipReleaseYear) > 2020 :
 				ipReleaseYear = 'TAG_IS_EMPTY'
 		except ValueError:
 			ipReleaseYear = 'TAG_IS_EMPTY'
-	except KeyError:
-		pass
 
 	try:
-		ipGenre = mp3info['genre'][0]
-		ipGenre = checkForJunkEntry(ipGenre)
-	except KeyError:
-		pass
-
-	try:
-		file    = File(fileName) 
-		artwork = file.tags['APIC:'].data
+		#file    = File(fileName) 
+		artwork = File(fileName).tags['APIC:'].data
 		ipCover = 'Cool!'
-	except KeyError:
+	except:
 		pass
+
+	searchQuery = sQ1 + ' ' + sQ2
+
+	if searchQuery == ' ':
+		#Get some tags then
+
+		titleFromFile = re.sub(r'(\.mp3|\.ogg)', '', mp3FileName)
+
+		checkTitleOnGoogle = gSuggDidYouMean(str(titleFromFile))
+		if checkTitleOnGoogle:
+			titleFromFile = checkTitleOnGoogle
+			searchQuery = titleFromFile
+		else:
+			searchQuery = str(titleFromFile)
+
+		searchQuery = re.sub(r'(audio|HQ|1080p|official|video)', '', searchQuery, re.IGNORECASE)
+
+
+
+		#print "NO ARTIST OR TITLE TAGS!"
+		#destination="OUTPUT_6_NO_TAGS/" + mp3FileName
+		#makeTheDir("OUTPUT_6_NO_TAGS")
+		#os.rename(source, destination )
+		#return ''
+
 
 	if 'TAG_IS_EMPTY' in (ipArtist,ipTitle,ipAlbumTitle,ipReleaseYear,ipGenre,ipCover):
-		print 'Go Get Info: ' + ipArtist + " " + ipTitle
-
-		if 'TAG_IS_EMPTY' in ipArtist:
-			sQ1 = ''
-		else:
-			sQ1 = ipArtist
-
-		if 'TAG_IS_EMPTY' in ipTitle:
-			sQ2 = ''
-
-		else:
-			sQ2 = ipTitle
 
 		############ Probably drop this part
 		if 'TAG_IS_EMPTY' in ipAlbumTitle:
@@ -185,15 +225,9 @@ def getTagsFromFile (fileName):
 			sQ3 = ipAlbumTitle
 		###########
 
-		searchQuery = sQ1 + ' ' + sQ2
-
-		if searchQuery == ' ':
-			destination="OUTPUT_6_NO_TAGS/" + mp3FileName
-			makeTheDir("OUTPUT_6_NO_TAGS")
-			os.rename(source, destination )
-			return ''
 
 
+		print 'Go Get Info: ' + searchQuery
 		if searchDiscogs(searchQuery):
 			# if positive results are returned, exit out and return a result, this will enable addTagsToFile to start
 			return "Cool!"
@@ -227,7 +261,7 @@ def searchDiscogs (searchQuery):
 	opGenre       = 'TAG_IS_EMPTY'
 	opCover       = 'TAG_IS_EMPTY'
 
-	discogs = discogs_client.Client('ExampleApplication/0.1', user_token="XXXXXXXXXXX")
+	discogs = discogs_client.Client('ExampleApplication/0.1', user_token="tLOqGxpsHNYovSMEvRsFXgtAfXKOfIBRwbhkiepw")
 
 	results = discogs.search(searchQuery, type='release')
 	results.pages
@@ -253,10 +287,18 @@ def searchDiscogs (searchQuery):
 				ipTitle = unicode(checkTitle).title()
 
 			searchDiscogs(response)
-			#else:
-			#	pass
 			return ''
 		else:
+			print "NO RESULTS! SANITISING"
+			sanitised = sanitiseString(searchQuery)
+			if sanitised and sanitised != response:
+				print "S: " + sanitised
+				print "R: " + response
+				print "SEARCHING WITH CLEAN STRING!"
+				searchDiscogs(sanitised)
+				return ''
+			else:
+				pass
 			print "MV FILE TO OUTPUT_4_NO_RESULTS"
 			source="inputfiles/" + mp3FileName
 			destination="OUTPUT_4_NO_RESULTS/" + mp3FileName
@@ -313,24 +355,38 @@ def searchDiscogs (searchQuery):
 		except:
 			print "WHOOPS"
 			print "SOME RESULTS, BUT NOT GOOD ENOUGH"
-			print "MV FILE TO OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH"
-			source="inputfiles/" + mp3FileName
-			destination="OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH/" + mp3FileName
-			makeTheDir("OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH")
-			os.rename(source, destination )
-			# Do nothing more with this file
+			goCheckGoogle = gSuggDidYouMean(str(searchQuery))
+			if goCheckGoogle:
+				searchDiscogs (goCheckGoogle)
+			else:
+
+				print "MV FILE TO OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH"
+				source="inputfiles/" + mp3FileName
+				destination="OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH/" + mp3FileName
+				makeTheDir("OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH")
+				os.rename(source, destination )
+				# Do nothing more with this file
 			return ''
 
 	if "TAG_IS_EMPTY" in (opArtist,opAlbumTitle,opAlbumArtist,opReleaseYear,opGenre,opCover):
 		print "SOME RESULTS, BUT NOT GOOD ENOUGH"
-		print "REALLY MV FILE TO OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH"
-		source="inputfiles/" + mp3FileName
-		destination="OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH/" + mp3FileName
-		makeTheDir("OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH")
+		print "REALLY MV FILE TO OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH " + str(searchQuery)
+		goCheckGoogle = gSuggDidYouMean(str(searchQuery))
+		if goCheckGoogle:
+			print "yiss " + str(goCheckGoogle)
+			searchDiscogs (goCheckGoogle)
+		else:
+			source="inputfiles/" + mp3FileName
+			destination="OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH/" + mp3FileName
+			makeTheDir("OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH")
 
-		os.rename(source, destination )
+			#checkTitleOnGoogle = gSuggDidYouMean(str(titleFromFile))
+
+			os.rename(source, destination )
 		return ''
 	else:
+
+
 		#print "OK"
 		print "ALBUM: "  + opAlbumTitle
 		print "ARTIST: " + opArtist
@@ -352,6 +408,7 @@ def insertNewTags(useThisFile):
 	global opReleaseYear
 	global opGenre
 	global opCover
+	global titleFromFile
 
 	global ipArtist
 	global ipTitle
@@ -373,11 +430,21 @@ def insertNewTags(useThisFile):
 		pic = APIC(3, u'image/jpg', 3, u'Front cover', open(jpgTmp, 'rb').read())
 		newTag.add(pic)
 
-
-	if ipTitle        == "TAG_IS_EMPTY":
+	if ipTitle == "TAG_IS_EMPTY" or titleFromFile:
 		print "Adding ID3 ipTitle;",
-		opTitle       = re.sub(r'inputfiles/', '', useThisFile)
+		#opTitle = mp3FileName
+		opTitle = unicode(mp3FileName).title()
+		opTitle = re.sub(r'\.mp3', '', opTitle, re.IGNORECASE)
+		opTitle = re.sub(r'\.ogg', '', opTitle, re.IGNORECASE)
+		opTitle = re.sub(r'^' + re.escape(opArtist) , '', opTitle)
+		opTitle = re.sub(r'^( |\-|\_)', '', opTitle)
+		opTitle = re.sub(r'^( |\-|\_)', '', opTitle)
+		
+		#opTitle = "GOAT!"
+		#opTitle       = re.sub(r'inputfiles/', '', useThisFile)
 		newTag.add(TIT2(encoding=3, text=opTitle))
+
+
 	if ipAlbumTitle       == "TAG_IS_EMPTY":
 		print "Adding ID3 ipAlbumTitle;",
 		newTag.add(TALB(encoding=3, text=opAlbumTitle))
@@ -387,7 +454,7 @@ def insertNewTags(useThisFile):
 	if ipGenre        == "TAG_IS_EMPTY":
 		print "Adding ID3 ipGenre;",
 		newTag.add(TCON(encoding=3, text=opGenre))
-	if ipArtist       == "TAG_IS_EMPTY":
+	if ipArtist       == "TAG_IS_EMPTY" or titleFromFile:
 		print "Adding ID3 ipArtist;",
 		newTag.add(TPE1(encoding=3, text=opArtist))
 	if ipReleaseYear      == "TAG_IS_EMPTY":
@@ -396,8 +463,8 @@ def insertNewTags(useThisFile):
 
 	newTag.save()
 	source="inputfiles/" + mp3FileName
-	destination="OUTPUT_1_PROCESSED/" + mp3FileName
-	makeTheDir("OUTPUT_1_PROCESSED")
+	destination="OUTPUT_1_PROCESSEDD/" + mp3FileName
+	makeTheDir("OUTPUT_1_PROCESSEDD")
 	os.rename(source, destination )
 
 
