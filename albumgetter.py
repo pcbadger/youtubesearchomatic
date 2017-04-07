@@ -51,7 +51,8 @@ def moveTheFile(sourceFileName,destinationFolder):
 
 
 def checkForJunkEntry(tagToCheck):
-	if re.match(r'^(unknown|na|n\/A|none|null|\ )$', tagToCheck, re.IGNORECASE):
+	if re.match(r'^(unknown|na|n\/A|none|null|varios|various|various artists|varios artists|\ )$', tagToCheck, re.IGNORECASE):
+		print "JUNK TAG: " + tagToCheck
 		tagToCheck = 'TAG_IS_EMPTY'
 	return tagToCheck
 
@@ -92,6 +93,15 @@ def gSuggDidYouMean(q):
     	print "No new match!"
     return result
 
+def fixCase(stringToFixIn):
+	print "FIXING " + stringToFixIn
+	stringToFix = unicode(stringToFixIn).title().strip()
+	print "fixed " + stringToFix
+	stringToFix = re.sub(r'n T ', "n\'t ", stringToFix)
+	stringToFix = re.sub(r' S ', "\'s ", stringToFix)
+	stringToFix = re.sub(r' Ve ', "\'Ve ", stringToFix)
+	stringToFix = re.sub(r' Ll ', "\'ll ", stringToFix)
+	return stringToFix
 
 def sanitiseString(tagToCheck):
 	# Strip all the crap out of the string, maybe we'll get a result now
@@ -100,11 +110,16 @@ def sanitiseString(tagToCheck):
 	print "Sanitising this tag: " + tagToCheck
 	tagIn = rx.sub(' ', tagToCheck).strip()
 	tagIn = str(str.lower(str(tagIn))).strip()
-	tagIn = re.sub(r'\.mp3', '', tagIn)
-	tagIn = re.sub(r'\.ogg', '', tagIn)
-	tagIn = re.sub(r'(live|audio|hd|HQ|1080p|official|video)', ' ', tagIn, re.IGNORECASE)
+	print "1 " + tagIn
+	tagIn = re.sub(r'mp3$', '', tagIn)
+	print "2 " + tagIn
+
+	tagIn = re.sub(r'ogg$', '', tagIn)
+	tagIn = re.sub(r'( by | hd|HQ|720p|1080p|official)', ' ', tagIn, re.IGNORECASE)
+	tagIn = re.sub(r'(audio|video)$', ' ', tagIn, re.IGNORECASE)
 	tagIn = re.sub(r'  ', ' ', tagIn)
 	if tagIn == str(tagToCheck):
+		print "3 " + tagIn
 		print "Sanitising had no effect!"
 		tagIn = ''
 	else:
@@ -122,6 +137,7 @@ def getTagsFromFile (fileName):
 	global mp3FileName
 	global titleFromFile
 
+	titleFromFile = ''
 	ipArtist      = 'TAG_IS_EMPTY'
 	ipTitle       = 'TAG_IS_EMPTY'
 	ipAlbumTitle  = 'TAG_IS_EMPTY'
@@ -182,7 +198,7 @@ def getTagsFromFile (fileName):
 	searchQuery = sQ1 + ' ' + sQ2
 
 	if searchQuery == ' ':
-
+		print "No Artist or Title Tags! Taking a guess at them based on filename"
 		titleFromFile = sanitiseString(mp3FileName)
 
 		checkTitleOnGoogle = gSuggDidYouMean(str(titleFromFile))
@@ -237,6 +253,7 @@ def searchDiscogs (searchQuery):
 	except IndexError:
 		print "NO RESULTS"
 		firstRelease = ''
+		response     = ''
 		response     = gSuggDidYouMean(str(searchQuery))
 		if response and response != searchQuery:
 			ipTitle       = 'TAG_IS_EMPTY'
@@ -350,6 +367,67 @@ def insertNewTags(useThisFile):
 
 	newTag = ID3(useThisFile)
 
+
+	def compareTags(tagToCheck,tagToWrite,ID3TagName):
+
+		#tagIn  = 'ip' + tagToCheck
+		#tagOut = 'op' + tagToCheck
+		tagInContent = str(globals()[tagToCheck])
+
+		#global tagToCheck
+		#global tagToWrite
+		print 'xxxxxx'
+		#print tagOut
+		#print globals()[tagIn]
+		#print 'tagIn'
+		#print tagIn
+		print ID3TagName
+		print tagToWrite
+		print tagToCheck
+		#print "Ti: " + tagIn
+		#print "To: " + tagOut
+		GOAT = globals()[ID3TagName]
+		print GOAT
+		if tagInContent  == "TAG_IS_EMPTY":
+			print 'Adding ' + str(tagInContent) + ' to ID3 ' + str(tagToCheck) + ' ;',
+			newTag.add(GOAT(encoding=3, text=tagToWrite))
+			#newTag.add(newCommand)
+
+	#compareTags('AlbumTitle','TALB')
+	#compareTags('AlbumArtist','TPE2')
+	#compareTags('Genre','TCON')
+	#compareTags('Artist','TPE1')
+	#compareTags('ReleaseYear','TDRC')
+
+	#compareTags('ipAlbumTitle','opAlbumTitle','TALB')
+	#compareTags('ipAlbumArtist','opAlbumArtist','TPE2')
+	#compareTags('ipGenre','opGenre','TCON')
+	#compareTags('ipArtist','opArtist','TPE1')
+	#compareTags('ipReleaseYear','opReleaseYear','TDRC')
+	#compareTags('tagToCheck','TDRC')
+
+
+	if ipAlbumTitle  	== "TAG_IS_EMPTY":
+		print 'Adding ' + opAlbumTitle + ' to ID3 ipAlbumTitle ;',
+		newTag.add(TALB(encoding=3, text=opAlbumTitle))
+
+	if ipAlbumArtist  	== "TAG_IS_EMPTY":
+		print 'Adding ' + opAlbumArtist + ' to ID3 ipAlbumArtist ;',
+		newTag.add(TPE2(encoding=3, text=opAlbumArtist))
+
+	if ipGenre  		== "TAG_IS_EMPTY":
+		print 'Adding ' + opGenre + ' to ID3 ipGenre ;',
+		newTag.add(TCON(encoding=3, text=opGenre))
+
+	if ipArtist  		== "TAG_IS_EMPTY":
+		print 'Adding ' + opArtist + ' to ID3 ipArtist ;',
+		newTag.add(TPE1(encoding=3, text=opArtist))
+
+	if ipReleaseYear  	== "TAG_IS_EMPTY":
+		print 'Adding ' + str(opReleaseYear) + ' to ID3 ipReleaseYear ;',
+		newTag.add(TDRC(encoding=3, text=str(opReleaseYear)))
+
+
 	if ipCover    == "TAG_IS_EMPTY":
 		coverFile = urllib2.urlopen(opCover)
 		with open(jpgTmp,'wb') as output:
@@ -359,30 +437,19 @@ def insertNewTags(useThisFile):
 		print 'Adding Cover ;',
 
 	if ipTitle    == "TAG_IS_EMPTY" or titleFromFile:
-		print "Adding ID3 ipTitle ;",
+		print "Adding ID3 ipTitle ;" + ipTitle + ' ' + titleFromFile
 		opTitle = sanitiseString(mp3FileName)
-		opTitle = re.sub(r'^' + re.escape(opArtist) , '', opTitle)
+		opTitle = str.lower(str(opTitle))
+		tmpArtist = str.lower(str(opArtist))
+		opTitle = re.sub(r'^' + re.escape(tmpArtist) , '', opTitle)
 		opTitle = re.sub(r'  ', ' ', opTitle)
-		opTitle = unicode(opTitle).title().strip()
+		opTitle = sanitiseString(opTitle)
+		opTitle = fixCase(opTitle)
 		newTag.add(TIT2(encoding=3, text=opTitle))
 
-	def compareTags(tagToCheck,ID3TagName):
-		tagIn  = 'ip' + tagToCheck
-		tagOut = 'op' + tagToCheck
-
-		if tagIn       == "TAG_IS_EMPTY":
-			print 'Adding ID3 ' + tagToCheck + ' ;',
-			newTag.add(ID3TagName(encoding=3, text=tagOut))
-
-	compareTags('AlbumTitle','TALB')
-	compareTags('AlbumArtist','TPE2')
-	compareTags('Genre','TCON')
-	compareTags('Artist','TPE1')
-	compareTags('ReleaseYear','TDRC')
-	compareTags('tagToCheck','TDRC')
 
 	newTag.save()
-	moveTheFile(mp3FileName,'OUTPUT_1_PROCESSEDD')
+	moveTheFile(mp3FileName,'OUTPUT_1_PROCESSEDE')
 
 
 for subdir, dirs, files in os.walk(inputFileDir):
@@ -390,6 +457,7 @@ for subdir, dirs, files in os.walk(inputFileDir):
 
 		filepath = subdir + os.sep + file
 		mp3FileName = file
-		if filepath.endswith(".mp3"):
+		#filepath = re.sub('mp3', 'mp3', filepath, re.IGNORECASE)
+		if re.search(r'mp3$', filepath, re.IGNORECASE):
 			getTagsFromFile(filepath)
 
