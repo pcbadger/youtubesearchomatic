@@ -4,7 +4,7 @@ import discogs_client
 import os
 import re
 import urllib2
-
+import time
 import requests
 import mutagen
 from mutagen.easyid3 import EasyID3
@@ -46,7 +46,6 @@ def moveTheFile(sourceFileName,destinationFolder):
 	os.rename(sourceFile, destinationFile )
 	print '#################################'
 	print '\n'
-
 	return ''
 
 
@@ -70,10 +69,37 @@ def gSuggGetPage(url):
         data = response.read()
     return data
 
+
+def googSearchDiscog(q):
+    print  "Asking Google to search as it's a bit more forgiving than discogs: " + q
+    q = str(str.lower(q)).strip() + " site:discogs.com"
+    url = "http://www.google.com/search?q=" + urllib.quote(q)
+    print "Searching google with URL "  + str(url)
+    html = gSuggGetPage(url)
+    soup = BeautifulSoup(html, "html.parser")
+    ans = soup.find('a', attrs={'class' : 'spell'})
+    try:
+    	# Looking for webcache URL, rather than the one in <cite> because sometimes that's truncated
+        result = soup.select_one("a[href*=webcache*release]")
+        print "Raw URL " + str(result)
+        result =  str(result).split("https://www.discogs",1)[1]
+        print "Discogs ULR " + str(result)
+        result =  "https://www.discogs" + str(result).rsplit("+&amp;cd",1)[0]
+        print "result ID " + str(result)
+    except:
+        result = "ATTRIBUTE_ERROR"
+    print "Google search of Discogs result: " + str(result)
+    if result == q:
+    	result = ''
+    	print "No new match!"
+    return result
+
+
 def gSuggDidYouMean(q):
     print  "Asking Google about: " + q
     q = str(str.lower(q)).strip()
     url = "http://www.google.com/search?q=" + urllib.quote(q)
+    print "Searching google with URL " + str(url)
     html = gSuggGetPage(url)
     soup = BeautifulSoup(html, "html.parser")
     ans = soup.find('a', attrs={'class' : 'spell'})
@@ -86,12 +112,13 @@ def gSuggDidYouMean(q):
         result = re.sub('[^A-Za-z0-9\s]+', '', result)
         result = re.sub(' +',' ',result)
     except AttributeError:
-        result = 1
-    print "Google says: " + str(result)
+        result = "ATTRIBUTE_ERROR"
+    print "Google says did you mean .... " + str(result)
     if result == q:
     	result = ''
     	print "No new match!"
     return result
+
 
 def fixCase(stringToFixIn):
 	print "FIXING " + stringToFixIn
@@ -115,7 +142,7 @@ def sanitiseString(tagToCheck):
 	print "2 " + tagIn
 
 	tagIn = re.sub(r'ogg$', '', tagIn)
-	tagIn = re.sub(r'( by | hd|HQ|720p|1080p|official)', ' ', tagIn, re.IGNORECASE)
+	tagIn = re.sub(r'( by | hd|HQ|720p|1080p|official|remaster)', ' ', tagIn, re.IGNORECASE)
 	tagIn = re.sub(r'(audio|video)$', ' ', tagIn, re.IGNORECASE)
 	tagIn = re.sub(r'  ', ' ', tagIn)
 	if tagIn == str(tagToCheck):
@@ -202,14 +229,11 @@ def getTagsFromFile (fileName):
 		titleFromFile = sanitiseString(mp3FileName)
 
 		checkTitleOnGoogle = gSuggDidYouMean(str(titleFromFile))
-		if checkTitleOnGoogle:
+		if checkTitleOnGoogle and checkTitleOnGoogle != "ATTRIBUTE_ERROR":
 			titleFromFile = checkTitleOnGoogle
 		searchQuery = str(titleFromFile)
 
 	if 'TAG_IS_EMPTY' in (ipArtist,ipTitle,ipAlbumTitle,ipReleaseYear,ipGenre,ipCover):
-
-
-
 
 		print 'Go Get Info: ' + searchQuery
 		if searchDiscogs(searchQuery):
@@ -234,6 +258,7 @@ def searchDiscogs (searchQuery):
 	global ipTitle
 	global titleFromFile
 
+	idFromGoogle  = ""
 	opArtist      = 'TAG_IS_EMPTY'
 	opTitle       = 'TAG_IS_EMPTY'
 	opAlbumTitle  = 'TAG_IS_EMPTY'
@@ -245,6 +270,7 @@ def searchDiscogs (searchQuery):
 	discogs = discogs_client.Client('ExampleApplication/0.1', user_token="tLOqGxpsHNYovSMEvRsFXgtAfXKOfIBRwbhkiepw")
 
 	results = discogs.search(searchQuery, type='release')
+	time.sleep(2)
 	results.pages
 	1
 	try:
@@ -255,28 +281,36 @@ def searchDiscogs (searchQuery):
 		firstRelease = ''
 		response     = ''
 		response     = gSuggDidYouMean(str(searchQuery))
-		if response and response != searchQuery:
+
+		if response and response != searchQuery and response != "ATTRIBUTE_ERROR":
 			ipTitle       = 'TAG_IS_EMPTY'
 			ipArtist      = 'TAG_IS_EMPTY'
 			titleFromFile = response
 			print "Got response from Google, going for another pass"
-			searchDiscogs(response)
+			print response
+			# None of this google stuff works right now, just bypass it.
+			moveTheFile(mp3FileName,'OUTPUT_7_GOOGLE')
 			return ''
 		else:
 			print "NO RESULTS! SANITISING"
+			searchQuery = searchQuery.split(" - ",1)[0]
 			sanitised = sanitiseString(searchQuery)
 			if sanitised:
-				print "SEARCHING WITH CLEAN STRING!"
+				print "SEARCHING DISCOGS WITH CLEAN STRING!"
 				searchDiscogs(sanitised)
 				return ''
-			moveTheFile(mp3FileName,'OUTPUT_4_NO_RESULTS')
-			firstRelease = ''
-			return ''
+			googleIt = googSearchDiscog(str(searchQuery))
+			print googleIt
+			idFromGoogle = googleIt.rsplit('/', 1)[-1]
+			print idFromGoogle
 
 	if firstRelease:
+		print "first release " + str(firstRelease)
+		resultId = str(results[0].id)
+
 		try:
-			print 'Result ID: ' + str(results[0].id)
-			masterRelease = discogs.master(results[0].id)
+			print 'Result ID: ' + resultId
+			masterRelease = discogs.master(resultId)
 
 			try:				
 				print "USING RELEASE"
@@ -284,7 +318,7 @@ def searchDiscogs (searchQuery):
 				artistInfo    = firstRelease.artists[0]
 				opArtist      = artistInfo.name
 				opReleaseYear = firstRelease.year
-				opGenre       = firstRelease.styles[0]
+				opGenre       = firstRelease.genres[0]
 				opCover       = firstRelease.images[0]['uri']
 
 				tmpArtist     = re.sub(r'\&', 'And', opArtist)
@@ -294,16 +328,11 @@ def searchDiscogs (searchQuery):
 				opAlbumTitle  = re.sub(r'^' + re.escape(tmpArtist) + ' - ', '', opAlbumTitle)
 
 			except :
-				print "NO RELEASE or MISSING SOME FIELDS"
+				print "NO RELEASE or MISSING SOME FIELDS 1"
 				try: 
-					print "USING MASTER"
+					print "USING MASTER 1"
+					# This code does nothing, no idea where I got it from.
 					discogsSearchOutput = getDiscogsResultsFromMaster(masterRelease)
-					opAlbumTitle  = masterRelease.main_release.title
-					artistInfo    = masterRelease.main_release.artists[0]
-					opArtist      = re.sub(r' (\([0-9])\w+\)$', '', artistInfo.name)
-					opReleaseYear = masterRelease.main_release.year
-					opGenre       = masterRelease.main_release.styles[0]
-					opCover       = masterRelease.main_release.images[0]['uri']
 					# This has never happened so far
 					moveTheFile(mp3FileName,'OUTPUT_7_MASTER_BUT_NO_RELEASE')
 					return ''
@@ -320,18 +349,57 @@ def searchDiscogs (searchQuery):
 				opAlbumArtist = "Various"
 
 		except:
-			print "WHOOPS"
-			moveTheFile(mp3FileName,'OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH')
+			print "WHOOPS, can't get results[0].id"
+			#moveTheFile(mp3FileName,'OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH')
 
+			return ''
+	elif idFromGoogle and idFromGoogle != "ATTRIBUTE_ERROR":
+		print "Got an ID from google: it's " +  idFromGoogle
+		print "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+
+		try:
+			print 'Result ID: ' + idFromGoogle
+			masterRelease = discogs.release(idFromGoogle)
+			print "master " + str(masterRelease)
+			try:				
+				print "USING RELEASE"
+				opAlbumTitle  = masterRelease.title
+				print str(masterRelease.title)
+				artistInfo    = masterRelease.artists[0]
+				opArtist      = artistInfo.name
+				opReleaseYear = masterRelease.year
+				opGenre       = masterRelease.genres[0]
+				opCover       = masterRelease.images[0]['uri']
+				tmpArtist     = re.sub(r'\&', 'And', opArtist)
+				#Discogs will often prefix the name of a release with the artists name and we want to strip that out
+				opAlbumTitle  = re.sub(r'\* - ', ' - ', opAlbumTitle)
+				opAlbumTitle  = re.sub(r'^' + re.escape(opArtist) + ' - ', '', opAlbumTitle)
+				opAlbumTitle  = re.sub(r'^' + re.escape(tmpArtist) + ' - ', '', opAlbumTitle)
+
+			except :
+				print "Something else went wrong. Can't use release"
+				moveTheFile(mp3FileName,'OUTPUT_5_NOT_SURE_WHATS_WRONG')
+				return ''
+
+			opArtist       = re.sub(r' \(([0-9])\)', '', artistInfo.name)
+			opAlbumArtist  = opArtist
+
+			if re.search(r'various|varios',opArtist, re.IGNORECASE):
+				opAlbumArtist = "Various"
+
+		except:
+			print "omething else went wrong. ID mismatch"
+			moveTheFile(mp3FileName,'OUTPUT_5_NOT_SURE_WHATS_WRONG')
 			return ''
 
 	if "TAG_IS_EMPTY" in (opArtist,opAlbumTitle,opAlbumArtist,opReleaseYear,opGenre,opCover):
-		print "SOME RESULTS, BUT NOT GOOD ENOUGH"
+		print "SOME RESULTS, BUT NOT GOOD ENOUGH 1"
 		goCheckGoogle = gSuggDidYouMean(str(searchQuery))
-		if goCheckGoogle:
+		if goCheckGoogle and goCheckGoogle != "ATTRIBUTE_ERROR":
 			"Got something from Google, Going for another pass 2: "
 			searchDiscogs (goCheckGoogle)
 		else:
+#			print "491"
 			moveTheFile(mp3FileName,'OUTPUT_3_RESULTS_NOT_GOOD_ENOUGH')
 		return ''
 	else:
@@ -370,42 +438,17 @@ def insertNewTags(useThisFile):
 
 	def compareTags(tagToCheck,tagToWrite,ID3TagName):
 
-		#tagIn  = 'ip' + tagToCheck
-		#tagOut = 'op' + tagToCheck
 		tagInContent = str(globals()[tagToCheck])
 
-		#global tagToCheck
-		#global tagToWrite
 		print 'xxxxxx'
-		#print tagOut
-		#print globals()[tagIn]
-		#print 'tagIn'
-		#print tagIn
 		print ID3TagName
 		print tagToWrite
 		print tagToCheck
-		#print "Ti: " + tagIn
-		#print "To: " + tagOut
 		GOAT = globals()[ID3TagName]
-		print GOAT
+		print "globals()[ID3TagName] " + str(GOAT)
 		if tagInContent  == "TAG_IS_EMPTY":
 			print 'Adding ' + str(tagInContent) + ' to ID3 ' + str(tagToCheck) + ' ;',
 			newTag.add(GOAT(encoding=3, text=tagToWrite))
-			#newTag.add(newCommand)
-
-	#compareTags('AlbumTitle','TALB')
-	#compareTags('AlbumArtist','TPE2')
-	#compareTags('Genre','TCON')
-	#compareTags('Artist','TPE1')
-	#compareTags('ReleaseYear','TDRC')
-
-	#compareTags('ipAlbumTitle','opAlbumTitle','TALB')
-	#compareTags('ipAlbumArtist','opAlbumArtist','TPE2')
-	#compareTags('ipGenre','opGenre','TCON')
-	#compareTags('ipArtist','opArtist','TPE1')
-	#compareTags('ipReleaseYear','opReleaseYear','TDRC')
-	#compareTags('tagToCheck','TDRC')
-
 
 	if ipAlbumTitle  	== "TAG_IS_EMPTY":
 		print 'Adding ' + opAlbumTitle + ' to ID3 ipAlbumTitle ;',
@@ -447,17 +490,13 @@ def insertNewTags(useThisFile):
 		opTitle = fixCase(opTitle)
 		newTag.add(TIT2(encoding=3, text=opTitle))
 
-
 	newTag.save()
-	moveTheFile(mp3FileName,'OUTPUT_1_PROCESSEDE')
-
+	moveTheFile(mp3FileName,'OUTPUT_1_PROCESSED')
 
 for subdir, dirs, files in os.walk(inputFileDir):
 	for file in files:
 
 		filepath = subdir + os.sep + file
 		mp3FileName = file
-		#filepath = re.sub('mp3', 'mp3', filepath, re.IGNORECASE)
 		if re.search(r'mp3$', filepath, re.IGNORECASE):
 			getTagsFromFile(filepath)
-

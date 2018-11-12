@@ -252,7 +252,7 @@ def youtubeVidGetter(query):
 
     RESULTURL = RESULTURL.split('\n', 1)[0]
 
-    if RESULTURL is None or RESULTURL.find("/channel/") != -1 or RESULTURL.find("/user/") != -1:
+    if RESULTURL is None or RESULTURL.find("/channel/") != -1 or RESULTURL.find("/user/") != -1 or RESULTURL.find("googlead") != -1:
         RESULTURL = retryFunc(youtubeVidGetter,query)
         bloominEck = "channel or user in "
          #+ RESULTURL
@@ -318,7 +318,7 @@ def downloadFile(TITLE,ARTIST,RESULTURL):
 
         ## Pretty sure this bit is redundant thanks to the writethumbnail ydl option
         if not os.path.isfile( jpgTmp ):
-            thumbNailUrl = subprocess.Popen("youtube-dl \'" + RESULTURL + "\' --get-thumbnail ", shell=True, stdout=subprocess.PIPE).stdout.read()
+            thumbNailUrl = subprocess.Popen("youtube-dl \'" + RESULTURL + "\' --get-thumbnail -x ", shell=True, stdout=subprocess.PIPE).stdout.read()
             thumbNailUrl = thumbNailUrl.split('\n', 1)[0]
             thumbNail = urllib2.urlopen(thumbNailUrl)
             with open(jpgTmp,'wb') as output:
