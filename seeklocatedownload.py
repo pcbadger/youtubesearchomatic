@@ -118,6 +118,7 @@ def reformat(STUFF):
     STUFF = re.sub(r'\'T ', '\'t ', STUFF)
     STUFF = re.sub(r'\'D ', '\'d ', STUFF)
     STUFF = re.sub(r'\'Re ', '\'re ', STUFF)
+    STUFF = re.sub(r'\'Ve ', '\'ve ', STUFF)
     STUFF = re.sub(r'\'Ll ', '\'ll ', STUFF)
     return STUFF
 
