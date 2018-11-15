@@ -16,6 +16,8 @@ import string
 import requests
 import time
 import youtube_dl
+import eyed3
+
 doThis = 'goat'
 withThis = 'goat'
 
@@ -82,7 +84,7 @@ def checkOptions(argv):
     
 
     if ARTIST is not None or TITLE is not None:
-        getUrl(TITLE,ARTIST)
+        getQuery(TITLE,ARTIST)
 
 def my_hook(d):
     if d['status'] == 'finished':
@@ -250,7 +252,7 @@ def youtubeVidGetter(query):
 
     RESULTURL = RESULTURL.split('\n', 1)[0]
 
-    if RESULTURL is None or RESULTURL.find("/channel/") != -1 or RESULTURL.find("/user/") != -1:
+    if RESULTURL is None or RESULTURL.find("/channel/") != -1 or RESULTURL.find("/user/") != -1 or RESULTURL.find("googlead") != -1:
         RESULTURL = retryFunc(youtubeVidGetter,query)
         bloominEck = "channel or user in "
          #+ RESULTURL
@@ -316,7 +318,7 @@ def downloadFile(TITLE,ARTIST,RESULTURL):
 
         ## Pretty sure this bit is redundant thanks to the writethumbnail ydl option
         if not os.path.isfile( jpgTmp ):
-            thumbNailUrl = subprocess.Popen("youtube-dl \'" + RESULTURL + "\' --get-thumbnail ", shell=True, stdout=subprocess.PIPE).stdout.read()
+            thumbNailUrl = subprocess.Popen("youtube-dl \'" + RESULTURL + "\' --get-thumbnail -x ", shell=True, stdout=subprocess.PIPE).stdout.read()
             thumbNailUrl = thumbNailUrl.split('\n', 1)[0]
             thumbNail = urllib2.urlopen(thumbNailUrl)
             with open(jpgTmp,'wb') as output:
@@ -369,28 +371,42 @@ def convertFile(TITLE,ARTIST,DESCRIPTION):
         newGenre = ''
         newTrackNumber = ''
         newAlbumArtist = ''
+
     ####
 
     print "Adding metadata to " + TITLE + ' by ' + ARTIST
-
-    if os.path.isfile( jpgTmp ):
-        COVER = "Cover (front)"
-        print "Adding Cover to " + TITLE + ' by ' + ARTIST
-        addCover = " -i \"" + jpgTmp + "\"  -map 0 -map 1 -metadata:s:v title=\"" + COVER + "\""
-    else:
-        addCover = ''
+    print origTitle
+    #TrackNumber2 = int(newTrackNumber)
+    with open(jpgTmp) as jT:
+        imageData = jT.read()
+    tagThis = eyed3.load(mp3Tmp1)
+    tagThis.tag.artist = ARTIST
+    tagThis.tag.album = newAlbum
+    tagThis.tag.album_artist = newAlbumArtist
+    tagThis.tag.title = TITLE
+    #tagThis.tag.track_num = int(TrackNumber2)
+    tagThis.tag.genre = newGenre
+    tagThis.tag.comments.set(origTitle)
+    tagThis.tag.images.set(3,imageData,"image/jpeg",u"video thumbnail")
+    tagThis.tag.save()
+   # if os.path.isfile( jpgTmp ):
+   #     COVER = "Cover (front)"
+   #     print "Adding Cover to " + TITLE + ' by ' + ARTIST
+   #     addCover = " -i \"" + jpgTmp + "\"  -map 0 -map 1 -metadata:s:v title=\"" + COVER + "\""
+   # else:
+   #     addCover = ''
 
     # Should probably replace this with the ffmpeg python module, but I couldn't be bothered right now
-    print subprocess.Popen("ffmpeg -hide_banner -nostats -loglevel error -i \"" + mp3Tmp1 + "\"  " + addCover + "  \
-        -metadata title=\"" + TITLE + "\" -metadata ARTIST=\"" + ARTIST + "\" \
-        -metadata album=\"" + newAlbum + "\" -metadata year=\"" + newRelYear + "\"\
-        -metadata genre=\"" + newGenre + "\" -metadata track=\"" + newTrackNumber + "\"\
-        -metadata album_artist=\"" + newAlbumArtist + "\" -metadata comment=\"" + origTitle + "\"\
-        -c copy -y \'" + mp3Tmp2 + "\' ", shell=True, stdout=subprocess.PIPE).stdout.read()
+    #print subprocess.Popen("ffmpeg -hide_banner -nostats -loglevel error -i \"" + mp3Tmp1 + "\"  " + addCover + "  \
+    #    -metadata title=\"" + TITLE + "\" -metadata ARTIST=\"" + ARTIST + "\" \
+    #    -metadata album=\"" + newAlbum + "\" -metadata year=\"" + newRelYear + "\"\
+    #    -metadata genre=\"" + newGenre + "\" -metadata track=\"" + newTrackNumber + "\"\
+    #    -metadata album_artist=\"" + newAlbumArtist + "\" -metadata comment=\"" + origTitle + "\"\
+    #    -c copy -y \'" + mp3Tmp2 + "\' ", shell=True, stdout=subprocess.PIPE).stdout.read()
     # Can you tell I originally wrote this in bash?
 
     print "Renaming to " + mp3Out
-    os.rename(mp3Tmp2, mp3Out )
+    os.rename(mp3Tmp1, mp3Out )
     statinfo = os.stat(mp3Out)
 
     if not os.path.isfile(mp3Out) or statinfo.st_size < 500:
