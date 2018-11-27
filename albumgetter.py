@@ -12,6 +12,7 @@ from mutagen.mp3 import MP3
 from mutagen.id3 import ID3NoHeaderError
 from mutagen.id3 import ID3, TIT2, TALB, TPE1, TPE2, COMM, USLT, TCOM, TCON, TDRC, APIC
 
+#from pathlib import Path
 
 import io
 import gzip
@@ -36,7 +37,6 @@ def moveTheFile(sourceFileName,destinationFolder):
 	global mp3FileName
 	print '\n'
 	print "Moving " + sourceFileName + " to " + destinationFolder
-	destinationFile = destinationFolder + '/' + mp3FileName
 	sourceFile = inputFileDir + '/' + sourceFileName
 	try: 
 		os.makedirs(destinationFolder)
@@ -44,7 +44,11 @@ def moveTheFile(sourceFileName,destinationFolder):
 		if not os.path.isdir(destinationFolder):
 			os.makedirs(destinationFolder)
 			raise
-	os.rename(sourceFile, destinationFile )
+	destinationFile = destinationFolder + '/' + mp3FileName
+	if os.path.isfile('destinationFile'):
+		destinationFile = destinationFile + '_1'
+
+	os.rename(sourceFile, destinationFile)
 	print '#################################'
 	print '\n'
 	return ''
@@ -79,14 +83,13 @@ def googSearchDiscog(q):
     print "Searching google with URL "  + str(url)
     html = gSuggGetPage(url)
     soup = BeautifulSoup(html, "html.parser")
-    ans = soup.find('a', attrs={'class' : 'spell'})
+    ans  = soup.find('a', attrs={'class' : 'spell'})
     try:
     	# Looking for webcache URL, rather than the one in <cite> because sometimes that's truncated
-        result = soup.select_one("a[href*=webcache*release]")
-        print "Raw URL " + str(result)
-        result =  str(result).split("https://www.discogs",1)[1]
+        result = soup.select_one("a[href*=release]")
+        result = result.get('href')
         print "Discogs URL " + str(result)
-        result =  "https://www.discogs" + str(result).rsplit("+&amp;cd",1)[0]
+        result =  str(result).rsplit("/",1)[1]
         print "result ID " + str(result)
     except:
         result = "ATTRIBUTE_ERROR"
@@ -153,7 +156,7 @@ def sanitiseString(tagToCheck,superHarsh):
 	print "Debug Sanitise pass 2 " + tagIn
 
 	tagIn = re.sub(r'ogg$', '', tagIn)
-	tagIn = re.sub(r'( by | hd|HQ|720p|1080p|official|remaster|mono|stereo)', ' ', tagIn, re.IGNORECASE)
+	tagIn = re.sub(r'( by | hd|HQ|720p|1080p|official|remaster|mono|stereo|_)', ' ', tagIn, re.IGNORECASE)
 	tagIn = re.sub(r'(audio|video)$', ' ', tagIn, re.IGNORECASE)
 	tagIn = re.sub(r'  ', ' ', tagIn)
 	if tagIn == str(tagToCheck) and superHarsh == 0:
@@ -178,6 +181,23 @@ def stripThe(artistName):
 	theLessArtist = re.sub(r"^(T|t)he ", '', str.lower(str(artistName))).split(", ",1)[0]
 	theLessArtist = sanitiseString(re.sub(r" & ", ' and ', theLessArtist).split(" (",1)[0],1)
 	return theLessArtist
+
+def findImage(q):
+	print "Asking Bing for an image because it's easier to grab pics from: " + q
+	q = str(q)
+	q = str(str.lower(q)).strip()
+	url = "https://www.bing.com/images/search?q=" + urllib.quote(q) + "&FORM=HDRSC2"
+	print "Searching for image here: "  + str(url)
+	html = gSuggGetPage(url)
+	soup = BeautifulSoup(html, "html.parser")
+	try:
+	    result = soup.select('img.mimg')
+	    print "Debug: " + str(result)
+	    result = result[0]['src']
+	    print "Debug: " + str(result)
+	except:
+		print "Whoops! Image search failed or something, sorry."
+	return result
 
 def getTagsFromFile (fileName):
 	global ipArtist
@@ -253,6 +273,7 @@ def getTagsFromFile (fileName):
 	if searchQuery == ' ':
 		print "No Artist or Title Tags! Taking a guess at them based on filename"
 		titleFromFile = sanitiseString(mp3FileName,1)
+		#artistFromFile = sanitiseString(mp3FileName,1)
 
 		checkTitleOnGoogle = gSuggDidYouMean(str(titleFromFile))
 		if checkTitleOnGoogle and checkTitleOnGoogle != "ATTRIBUTE_ERROR":
@@ -532,9 +553,10 @@ def insertNewTags(useThisFile):
 		print 'Adding ' + str(opReleaseYear) + ' to ID3 ipReleaseYear ;',
 		newTag.add(TDRC(encoding=3, text=str(opReleaseYear)))
 
-	if ipCover    == "TAG_IS_EMPTY":
-		if opCover == "TAG_IS_EMPTY":
-			jpgTmp = "wat.jpg"
+	if ipCover          == "TAG_IS_EMPTY":
+		if opCover == "TAG_IS_EMPTY" and opArtist != "TAG_IS_EMPTY":
+			opCover = findImage(opArtist)
+			#jpgTmp = "wat.jpg"
 		try:
 			coverFile = urllib2.urlopen(opCover)
 			with open(jpgTmp,'wb') as output:
@@ -561,8 +583,10 @@ def insertNewTags(useThisFile):
 			newTag.add(TIT2(encoding=3, text=opTitle))
 
 	if ipAlbumArtist  	== "TAG_IS_EMPTY":
-		if opAlbumArtist == "TAG_IS_EMPTY":
+		if opAlbumArtist == "TAG_IS_EMPTY" and ipArtist != "TAG_IS_EMPTY":
 			opAlbumArtist = ipArtist
+		else:
+			opAlbumArtist = opArtist
 		opAlbumArtist = fixCase(opAlbumArtist)
 		print 'Adding ' + opAlbumArtist + ' to ID3 ipAlbumArtist ;',
 		newTag.add(TPE2(encoding=3, text=opAlbumArtist))
