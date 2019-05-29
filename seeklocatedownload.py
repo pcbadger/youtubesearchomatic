@@ -370,7 +370,10 @@ def convertFile(TITLE,ARTIST,DESCRIPTION):
     print origTitle
     with open(jpgTmp) as jT:
         imageData = jT.read()
-    tagThis = eyed3.load(mp3Tmp1)
+    if os.path.exists(mp3Tmp1):
+        tagThis = eyed3.load(mp3Tmp1)
+    else:
+        print "NOT FOUND!!!!!"
     tagThis.tag.artist = ARTIST
     tagThis.tag.album = newAlbum
     tagThis.tag.album_artist = newAlbumArtist
