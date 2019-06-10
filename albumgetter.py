@@ -4,7 +4,8 @@ import discogs_client
 import os
 import re
 #import urllib2
-import urllib
+import urllib.parse
+import urllib.request
 import time
 import requests
 import mutagen
@@ -12,6 +13,9 @@ from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3NoHeaderError
 from mutagen.id3 import ID3, TIT2, TALB, TPE1, TPE2, COMM, USLT, TCOM, TCON, TDRC, APIC
+
+import pprint
+
 
 #from pathlib import Path
 
@@ -21,13 +25,14 @@ import sys
 import urllib
 
 from bs4 import BeautifulSoup
-from StringIO import StringIO
+#from StringIO import StringIO
+from io import StringIO
 
 from mutagen import File
 import sys
 
-reload(sys)
-sys.setdefaultencoding('utf8')
+#reload(sys)
+#sys.setdefaultencoding('utf8')
 
 inputFileDir  = 'inputfiles'
 mp3FileName   = ''
@@ -37,7 +42,7 @@ guessTags     = ''
 def moveTheFile(sourceFileName,destinationFolder):
 	global mp3FileName
 	print ('\n')
-	print ("Moving ") + sourceFileName + (" to ") + destinationFolder
+	print ("Moving " + sourceFileName + " to " + destinationFolder)
 	sourceFile = inputFileDir + '/' + sourceFileName
 	try: 
 		os.makedirs(destinationFolder)
@@ -57,18 +62,19 @@ def moveTheFile(sourceFileName,destinationFolder):
 
 def checkForJunkEntry(tagToCheck):
 	if re.match(r'^(unknown|na|n\/A|none|null|varios|various|various artists|varios artists|\ )$', tagToCheck, re.IGNORECASE):
-		print ("JUNK TAG: ") + tagToCheck
+		print ("JUNK TAG: " + tagToCheck)
 		tagToCheck = 'TAG_IS_EMPTY'
 	return tagToCheck
 
 
 def gSuggGetPage(url):
-    request = urllib2.Request(url)
+    request = urllib.request.Request(url)
     request.add_header('Accept-encoding', 'gzip')
     request.add_header('User-Agent','Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_3) AppleWebKit/535.20 (KHTML, like Gecko) Chrome/19.0.1036.7 Safari/535.20')
-    response = urllib2.urlopen(request)
+    response = urllib.request.urlopen(request)
     if response.info().get('Content-Encoding') == 'gzip':
-        buf = StringIO( response.read())
+        buf = io.BytesIO( response.read())
+#        buf = io.StringIO( response.read())
         f = gzip.GzipFile(fileobj=buf)
         data = f.read()
     else:
@@ -77,11 +83,11 @@ def gSuggGetPage(url):
 
 
 def googSearchDiscog(q):
-    print ("Asking Google to search as it's a bit more forgiving than discogs: ") + q
+    print ("Asking Google to search as it's a bit more forgiving than discogs: " + q)
     print ("This is a bit more prone to inaccuracy though")
     q = str(str.lower(q)).strip() + " site:discogs.com"
-    url = "http://www.google.com/search?q=" + urllib.quote(q)
-    print ("Searching google with URL ")  + str(url)
+    url = "http://www.google.com/search?q=" + urllib.parse.quote(q)
+    print ("Searching google with URL " + url)
     html = gSuggGetPage(url)
     soup = BeautifulSoup(html, "html.parser")
     ans  = soup.find('a', attrs={'class' : 'spell'})
@@ -89,13 +95,13 @@ def googSearchDiscog(q):
     	# Looking for webcache URL, rather than the one in <cite> because sometimes that's truncated
         result = soup.select_one("a[href*=release]")
         result = result.get('href')
-        print ("Discogs URL ") + str(result)
+        print ("Discogs URL " + result)
         result =  str(result).rsplit("/",1)[1]
-        print ("result ID ") + str(result)
+        print ("result ID " + result)
     except:
         result = "ATTRIBUTE_ERROR"
         print ("Can't find a webcache URL")
-    print ("Google search of Discogs result: ") + str(result)
+    print ("Google search of Discogs result: " + result)
     if result == q:
     	result = ''
     	print ("No new match!")
@@ -103,10 +109,10 @@ def googSearchDiscog(q):
 
 
 def gSuggDidYouMean(q):
-	print  ("Asking Google about: ") + q
+	print  ("Asking Google about: " + q)
 	q = str(str.lower(q)).strip()
-	url = "http://www.google.com/search?q=" + urllib.quote(q)
-	print ("Searching google with URL ") + str(url)
+	url = "http://www.google.com/search?q=" + urllib.parse.quote(q)
+	print ("Searching google with URL " + url)
 	html = gSuggGetPage(url)
 	soup = BeautifulSoup(html, "html.parser")
 	ans  = soup.find('a', attrs={'class' : 'spell'})
@@ -124,7 +130,7 @@ def gSuggDidYouMean(q):
 	else:
 		result = ''
 	if result and result != q and result != "ATTRIBUTE_ERROR":
-		print ("Google says did you mean .... ") + str(result)
+		print ("Google says did you mean .... " + result)
 	else:
 		result = ''
 		print ("No new match!")
@@ -132,7 +138,7 @@ def gSuggDidYouMean(q):
 
 
 def fixCase(stringToFixIn):
-	print ("FIXING case ") + stringToFixIn
+	print ("FIXING case " + stringToFixIn)
 	stringToFix = unicode(stringToFixIn).title().strip()
 	stringToFix = re.sub(r"’", "\'", stringToFix)
 	stringToFix = re.sub(r"n(\ |\')(T|t) ", "n\'t ", stringToFix)
@@ -141,7 +147,7 @@ def fixCase(stringToFixIn):
 	stringToFix = re.sub(r"(\ |\')(L|l)l ", "\'ll ", stringToFix)
 	stringToFix = re.sub(r"(\ |\')(R|r)e ", "\'re ", stringToFix)
 	stringToFix = re.sub(r" I(\ |\')M ", " I\'m ", stringToFix)
-	print ("Fixed Case ") + stringToFix
+	print ("Fixed Case " + stringToFix)
 	return stringToFix
 
 def sanitiseString(tagToCheck,superHarsh):
@@ -149,23 +155,23 @@ def sanitiseString(tagToCheck,superHarsh):
 	sanitisedTagToCheck = ''
 	tagToCheck=tagToCheck.strip()
 	rx = re.compile('\W+')
-	print ("Sanitising this tag: ") + tagToCheck
+	print ("Sanitising this tag: " + tagToCheck)
 	tagIn = rx.sub(' ', tagToCheck).strip()
 	tagIn = str(str.lower(str(tagIn))).strip()
-	print ("Debug Sanitise pass 1 ") + tagIn
+	print ("Debug Sanitise pass 1 " + tagIn)
 	tagIn = re.sub(r'mp3$', '', tagIn)
-	print ("Debug Sanitise pass 2 ") + tagIn
+	print ("Debug Sanitise pass 2 " + tagIn)
 
 	tagIn = re.sub(r'ogg$', '', tagIn)
 	tagIn = re.sub(r'( by | hd|HQ|720p|1080p|official|remaster|mono|stereo|_)', ' ', tagIn, re.IGNORECASE)
 	tagIn = re.sub(r'(audio|video)$', ' ', tagIn, re.IGNORECASE)
 	tagIn = re.sub(r'  ', ' ', tagIn)
 	if tagIn == str(tagToCheck) and superHarsh == 0:
-		print ("Debug Sanitise pass 3 ") + tagIn
+		print ("Debug Sanitise pass 3 " + tagIn)
 		print ("Sanitising had no effect!")
 		tagIn = ''
 	else:
-		print ("SANITISED: ") + str(tagIn)
+		print ("SANITISED: " + tagIn)
 	return tagIn
 
 def extractAlbumTitle(albumTitleToCheck,artistToCheck):
@@ -187,15 +193,15 @@ def findImage(q):
 	print ("Asking Bing for an image because it's easier to grab pics from: ") + q
 	q = str(q)
 	q = str(str.lower(q)).strip()
-	url = "https://www.bing.com/images/search?q=" + urllib.quote(q) + "&FORM=HDRSC2"
-	print ("Searching for image here: ")  + str(url)
+	url = "https://www.bing.com/images/search?q=" + urllib.parse.quote(q) + "&FORM=HDRSC2"
+	print ("Searching for image here: " + url)
 	html = gSuggGetPage(url)
 	soup = BeautifulSoup(html, "html.parser")
 	try:
 	    result = soup.select('img.mimg')
-	    print ("Debug: ") + str(result)
+	    print ("Debug: " + result)
 	    result = result[0]['src']
-	    print ("Debug: ") + str(result)
+	    print ("Debug: " + result)
 	except:
 		print ("Whoops! Image search failed or something, sorry.")
 	return result
@@ -229,8 +235,14 @@ def getTagsFromFile (fileName):
 		mp3info
 		mp3info.save()
 
+	print (EasyID3.valid_keys.keys())
+	pprint.pprint(EasyID3.valid_keys.keys())
 
-	print ("Filename: ") + str(fileName) + ' ' + str(mp3info)
+	#mp3info = str(mp3info, 'utf-8')
+
+	#print (fileName)
+	#print ("Filename: ") + (fileName) + (' ') + (mp3info)
+	print ("Filename: " + fileName + ' ' + mp3info)
 
 	def checkTag(varName,tagName):
 		try:
@@ -283,13 +295,13 @@ def getTagsFromFile (fileName):
 
 	if 'TAG_IS_EMPTY' in (ipArtist,ipTitle,ipAlbumTitle,ipReleaseYear,ipGenre,ipCover):
 
-		print ('Go Get Info: ') + str(sQ1) + " " + str(sQ2)
+		print ('Go Get Info: ' + sQ1 + " " + sQ2)
 		if searchDiscogs(sQ1,sQ2):
 			# if positive results are returned, exit out and return a result, this will enable addTagsToFile to start
 			return "Cool!"
 
 	else:
-		print ("File OK: ") + ipArtist + " " + ipTitle,
+		print ("File OK: " + ipArtist + " " + ipTitle),
 		moveTheFile(mp3FileName,'OUTPUT_2_ALREADY_GOOD')
 		return ''
 
@@ -306,8 +318,8 @@ def searchDiscogs (sQ1,sQ2):
 	global ipTitle
 	global titleFromFile
 
-	print ("sQ1 ") + str(sQ1)
-	print ("sQ2 ") + str(sQ2)
+	print ("sQ1 " + sQ1)
+	print ("sQ2 " + sQ2)
 	searchQuery   = sQ1.strip() + ' ' + sQ2.strip()
 
 	idFromGoogle  = ""
@@ -324,7 +336,7 @@ def searchDiscogs (sQ1,sQ2):
 	discogs = discogs_client.Client('ExampleApplication/0.1', user_token="tLOqGxpsHNYovSMEvRsFXgtAfXKOfIBRwbhkiepw")
 
 	results = discogs.search(searchQuery, type='release')
-	print ("results ") + str(results)
+	print ("results  ##STRING MISSING")#+ results)
 	time.sleep(2)
 	results.pages
 	1
@@ -348,8 +360,8 @@ def searchDiscogs (sQ1,sQ2):
 				for key in allTracks:
 					keyTrackTitle = str.lower(str(key.title))
 					keyTrackTitle = sanitiseString(keyTrackTitle,1)
-					print ("Debug Key Track title ") + str(keyTrackTitle)
-					print ("Debug Track title ") + str(checkTitle)
+					print ("Debug Key Track title " + keyTrackTitle)
+					print ("Debug Track title " + checkTitle)
 					if keyTrackTitle == checkTitle:
 						print ("Found an exact match for this track title in this album, using this release")
 						useThisAlbum = "1"
@@ -357,7 +369,7 @@ def searchDiscogs (sQ1,sQ2):
 						break
 					else:
 						splitTitle = sQ2.split(" - ",1)[0]
-						print ("Split Title ") + str(splitTitle)
+						print ("Split Title " + splitTitle)
 						if splitTitle == sQ2:
 							print ("Title or artist doesn't match, checking next title")
 						else:
@@ -393,7 +405,7 @@ def searchDiscogs (sQ1,sQ2):
 			ipArtist      = 'TAG_IS_EMPTY'
 			titleFromFile = response
 			print ("Got response from Google, going for another pass")
-			print ("Response: ") + str(response)
+			print ("Response: " + response)
 			# None of this google stuff works right now, just bypass it.
 			moveTheFile(mp3FileName,'OUTPUT_7_GOOGLE')
 			return ''
@@ -406,17 +418,17 @@ def searchDiscogs (sQ1,sQ2):
 				searchDiscogs(sanitised,"")
 				return ''
 			googleIt = googSearchDiscog(str(searchQuery))
-			print ("Google response: ") + str(googleIt)
+			print ("Google response: " + googleIt)
 			idFromGoogle = googleIt.rsplit('/', 1)[-1]
-			print ("ID from Google: ") + str(idFromGoogle)
+			print ("ID from Google: " + idFromGoogle)
 
 	if firstRelease:
-		print ("Using release ") + str(firstRelease)
+		print ("Using release ##STRING MISSING  + firstRelease")
 		resultId = str(results[releaseNumber].id)
-		print ("Result ID: ") + resultId
+		print ("Result ID: " + resultId)
 
 	elif idFromGoogle and idFromGoogle != "ATTRIBUTE_ERROR":
-		print ("Got an ID from google: it's ") +  idFromGoogle
+		print ("Got an ID from google: it's ##STRING MISSING  + idFromGoogle")
 		print ("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
 	try:
@@ -427,7 +439,7 @@ def searchDiscogs (sQ1,sQ2):
 		elif idFromGoogle and idFromGoogle != "ATTRIBUTE_ERROR":
 			masterRelease = discogs.release(idFromGoogle)
 			
-		print ("Debug master: ") + str(masterRelease)
+		print ("Debug master: " + masterRelease)
 
 		try:		
 			opAlbumTitle  = masterRelease.title
@@ -455,7 +467,7 @@ def searchDiscogs (sQ1,sQ2):
 			opAlbumTitle  = extractAlbumTitle(opAlbumTitle,opArtist)
 		
 		opAlbumTitle  = fixCase(opAlbumTitle)
-		print ("USING RELEASE ") + str(opAlbumTitle)
+		print ("USING RELEASE " + opAlbumTitle)
 
 	except :
 		print ("NO RELEASE or MISSING SOME FIELDS 1")
@@ -532,9 +544,9 @@ def insertNewTags(useThisFile):
 		print (tagToWrite)
 		print (tagToCheck)
 		GOAT = globals()[ID3TagName]
-		print ("globals()[ID3TagName] ") + str(GOAT)
+		print ("globals()[ID3TagName] " + GOAT)
 		if tagInContent  == "TAG_IS_EMPTY":
-			print ('Adding ') + str(tagInContent) + (' to ID3 ') + str(tagToCheck) + ' ;',
+			print ('Adding ' + tagInContent) + (' to ID3 ' + tagToCheck) + ' ;',
 			newTag.add(GOAT(encoding=3, text=tagToWrite))
 
 	if ipGenre  		== "TAG_IS_EMPTY":
@@ -551,7 +563,7 @@ def insertNewTags(useThisFile):
 	if ipReleaseYear  	== "TAG_IS_EMPTY":
 		if opReleaseYear == "TAG_IS_EMPTY":
 			opReleaseYear = 0000
-		print ('Adding ') + str(opReleaseYear) + (' to ID3 ipReleaseYear ;'),
+		print ('Adding ' + opReleaseYear) + (' to ID3 ipReleaseYear ;'),
 		newTag.add(TDRC(encoding=3, text=str(opReleaseYear)))
 
 	if ipCover          == "TAG_IS_EMPTY":
@@ -559,7 +571,7 @@ def insertNewTags(useThisFile):
 			opCover = findImage(opArtist)
 			#jpgTmp = "wat.jpg"
 		try:
-			coverFile = urllib2.urlopen(opCover)
+			coverFile = urllib.request.urlopen(opCover)
 			with open(jpgTmp,'wb') as output:
 				output.write(coverFile.read())
 		except:
@@ -611,6 +623,7 @@ for subdir, dirs, files in os.walk(inputFileDir):
 	for file in files:
 
 		filepath = subdir + os.sep + file
+		print (filepath)#debug
 		mp3FileName = file
 		if re.search(r'mp3$', filepath, re.IGNORECASE):
 			getTagsFromFile(filepath)
